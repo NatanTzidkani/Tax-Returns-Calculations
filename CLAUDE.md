@@ -13,9 +13,9 @@ for but NOT built now.
 - Design spec (approved): `docs/superpowers/specs/2026-07-03-tax-returns-app-design.md`
 - Completed foundation plan (example of our plan format): `docs/superpowers/plans/2026-07-03-foundation.md`
 
-## Current state (tag `foundation-complete`, 2026-07-04)
+## Current state (foundation + tax-engine core, 2026-07-04)
 
-Working skeleton, all green (17 tests, clean typecheck):
+All green (99 tests, clean typecheck; engine gated at ≥95% branch coverage):
 
 | Package | What exists |
 |---|---|
@@ -23,21 +23,18 @@ Working skeleton, all green (17 tests, clean typecheck):
 | `packages/api` | Fastify 5, `buildApp()` in `src/app.ts`, `GET /health`; Drizzle schema `src/db/schema.ts` with all 7 tables **migrated** (users, tax_years, documents, extracted_fields, confirmed_data, calculations, loss_carryforward); `getDb()` in `src/db/client.ts` |
 | `packages/web` | React 18 + Vite, Hebrew RTL shell (`lang="he" dir="rtl"`), i18next initialized in `src/i18n.ts` (he only), placeholder dashboard |
 | `infra/` | `docker-compose.yml`: db (postgres:17, :5432) + api (:3000) + web (:5173), localhost-bound; `infra/dev/` this dev container |
-| `packages/tax-engine` | **Does not exist yet — this is the next major work** |
+| `packages/tax-engine` | Pure TS engine (`calculate(input) → TaxReturnResult`, `ENGINE_VERSION`): IL 2024+2025 year data (frozen-law aware, every constant source-annotated — **owner verification of constants still pending**), modules for income-tax brackets, credit points (resident/gender + reviewer-entered extras), charity §46, capital gains w/ loss offset + carry-forward, pension §45א, surtax incl. 2025 2% capital add-on, informational NI reconciliation; `form1301Fields` map (official 1301 codes owner-verified in Plan 5). Plan: `docs/superpowers/plans/2026-07-04-tax-engine-core.md` |
 
 ## What the website still needs (build order)
 
 Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §10):
 
-1. **Plan 2 — tax-engine core** (next): new pure-TS package `packages/tax-engine`.
-   `calculate(input: TaxYearInput) → TaxReturnResult`, no I/O. Year-data files
-   (`jurisdictions/il/2024.ts`, `2025.ts` — brackets, credit-point value,
-   ceilings; EVERY constant annotated with official source URL) separated from
-   rule modules (`income-tax`, `credit-points`, `charity`, `capital-gains`,
-   `pension`, `national-insurance`). Expose every intermediate value; output a
-   `form1301Fields` map. Strict TDD, ~95% branch coverage, golden-file +
-   property tests ("refund ≤ tax withheld", monotonic marginal rate).
-2. **Plan 3 — document pipeline**: `Storage` interface (local disk first);
+1. ~~**Plan 2 — tax-engine core**~~ DONE 2026-07-04 (see table above). Left
+   open on purpose: children/degree/oleh credit-point tables (reviewer enters
+   verified totals via `additionalCreditPoints` until their own plan), §47
+   deductions, 15% non-linked-interest cases, and owner verification of every
+   year-data constant.
+2. **Plan 3 — document pipeline** (next): `Storage` interface (local disk first);
    `POST /documents` multipart upload; extraction via Claude API vision with the
    Zod schema as structured-output tool (map printed box codes, not layout);
    `Form867Schema` + `CharityReceiptSchema` in shared; statuses
