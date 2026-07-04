@@ -15,5 +15,34 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @taxreturns/api dev"
+    environment:
+      DATABASE_URL: postgresql://tax:tax@db:5432/taxreturns
+      PORT: "3000"
+      HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ..:/app
+      - api-node-modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @taxreturns/web dev --host 0.0.0.0"
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ..:/app
+      - web-node-modules:/app/node_modules
+
 volumes:
   db-data:
+  api-node-modules:
+  web-node-modules:
