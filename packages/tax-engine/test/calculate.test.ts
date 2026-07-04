@@ -160,6 +160,13 @@ describe('calculate — loud failures', () => {
     ).toThrow(InvalidTaxInputError);
   });
 
+  it('throws InvalidTaxInputError on negative NI withheld', () => {
+    const bad = { ...salary(100_000, 0), niEmployeeWithheldAgorot: sh(-1) };
+    expect(() => calculate(baseInput({ salaries: [bad] }))).toThrow(
+      InvalidTaxInputError,
+    );
+  });
+
   it('throws InvalidTaxInputError on non-integer money (floats never sneak in)', () => {
     const input = baseInput();
     input.salaries = [
