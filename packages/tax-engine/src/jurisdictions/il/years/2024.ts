@@ -84,8 +84,8 @@ export const il2024: IlYearData = {
     // Reduced band: up to 60% of the average wage (12,536 ₪/mo per
     // booklet-2025 "שכר ממוצע לעניין גביית דמי ביטוח") → 7,522 ₪/mo.
     reducedBandTopMonthlyAgorot: agorot(752_200),
-    // TODO(owner-verify): 2024 monthly contribution ceiling (49,030 ₪ per
-    // btl publications). Informational module only — never affects refund.
+    // 49,030 ₪/mo ceiling. source: btl חוזר מעסיקים 1511 (01/01/2024);
+    // verified in docs/superpowers/research/2026-07-05-tax-constants-verification.md.
     ceilingMonthlyAgorot: agorot(4_903_000),
   },
 };

@@ -29,8 +29,9 @@ export const il2025: IlYearData = {
   nationalInsurance: {
     ...il2024.nationalInsurance,
     // Employee rates changed 1 Jan 2025 (NI reduced 0.40%→1.04%; health
-    // reduced 3.10%→3.23%, full 5.00%→5.17% from 1 Feb 2025 — the engine
-    // uses the 5.17% full-year approximation; informational only).
+    // reduced 3.10%→3.23%; health full stepped 5.00%→5.16% (Jan 2025)→5.17%
+    // (from Feb 2025) — the engine uses the 5.17% full-year approximation,
+    // overstating January by 0.01pp; informational only).
     // source: btl.gov.il "לעובדים שכירים - שיעורי וסכומי דמי ביטוח" —
     // https://www.btl.gov.il/Insurance/Rates/Pages/לעובדים שכירים.aspx
     employee: {
@@ -39,9 +40,8 @@ export const il2025: IlYearData = {
       fullNiBp: 700, // 7.00%
       fullHealthBp: 517, // 5.17%
     },
-    // TODO(owner-verify): 2025 monthly contribution ceiling (btl page shows
-    // 51,910 ₪ for 2026; 2024 was 49,030 ₪). Value below interpolates the
-    // CPI indexation and MUST be checked. Informational module only.
+    // 50,695 ₪/mo ceiling. source: btl employer letter בל/651 (01.2025);
+    // verified in docs/superpowers/research/2026-07-05-tax-constants-verification.md.
     ceilingMonthlyAgorot: agorot(5_069_500),
   },
 };
