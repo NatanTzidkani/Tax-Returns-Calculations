@@ -1,0 +1,447 @@
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { eq } from 'drizzle-orm';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import type { FastifyInstance } from 'fastify';
+import pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { buildApp } from '../src/app';
+import * as schema from '../src/db/schema';
+import { EXTRACTION_MODEL, type ExtractionClient } from '../src/extraction/extractor';
+import { LocalDiskStorage } from '../src/storage/local-disk';
+
+// Real Postgres on the sibling container (spec §8 / plan Task 4). The admin
+// connection uses the dev `taxreturns` database ONLY to issue CREATE/DROP
+// DATABASE for the dedicated test database — it never touches its tables.
+const ADMIN_URL = 'postgresql://tax:tax@host.docker.internal:5432/taxreturns';
+const TEST_DB = 'taxreturns_test';
+const TEST_URL = `postgresql://tax:tax@host.docker.internal:5432/${TEST_DB}`;
+
+const migrationsFolder = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../drizzle',
+);
+
+// Fixture wire payload — the shape the model returns for a form 106.
+const form106Wire = {
+  taxYear: 2025,
+  employerName: 'אקמי בע"מ',
+  employerDeductionsFileId: '912345678',
+  employeeNationalId: '012345678',
+  boxes: [
+    { code: '158', amountAgorot: 24_000_000 },
+    { code: '042', amountAgorot: 3_600_000 },
+  ],
+  uncertainBoxes: [],
+};
+
+/** Switchable fake Anthropic client — no live API in tests. */
+let fakeMode: 'ok' | 'refuse' | 'transport' = 'ok';
+const fakeClient: ExtractionClient = {
+  messages: {
+    parse: async () => {
+      if (fakeMode === 'transport') throw new Error('connection reset');
+      return {
+        model: EXTRACTION_MODEL,
+        stop_reason: fakeMode === 'refuse' ? 'refusal' : 'end_turn',
+        parsed_output: fakeMode === 'ok' ? form106Wire : null,
+      };
+    },
+  },
+};
+const fake = {
+  get mode() {
+    return fakeMode;
+  },
+  set mode(m: 'ok' | 'refuse' | 'transport') {
+    fakeMode = m;
+  },
+  client: fakeClient,
+};
+
+function multipartBody(
+  fields: Record<string, string>,
+  file?: { filename: string; contentType: string; data: Buffer },
+) {
+  const boundary = `----vitest${randomUUID().replaceAll('-', '')}`;
+  const parts: Buffer[] = [];
+  for (const [name, value] of Object.entries(fields)) {
+    parts.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+      ),
+    );
+  }
+  if (file) {
+    parts.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
+      ),
+    );
+    parts.push(file.data, Buffer.from('\r\n'));
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  return {
+    payload: Buffer.concat(parts),
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  };
+}
+
+const pdfFile = {
+  filename: 'tofes106.pdf',
+  contentType: 'application/pdf',
+  data: Buffer.from('%PDF-1.4 fake form 106'),
+};
+
+async function uploadDocument(
+  app: FastifyInstance,
+  taxYearId: string,
+  kind: string,
+): Promise<{ id: string; storageKey: string }> {
+  const { payload, headers } = multipartBody({ kind }, pdfFile);
+  const res = await app.inject({
+    method: 'POST',
+    url: `/tax-years/${taxYearId}/documents`,
+    payload,
+    headers,
+  });
+  expect(res.statusCode).toBe(201);
+  return res.json();
+}
+
+let adminPool: pg.Pool;
+let pool: pg.Pool;
+let db: NodePgDatabase<typeof schema>;
+let storage: LocalDiskStorage;
+let storageDir: string;
+let app: FastifyInstance;
+let taxYearId: string;
+
+beforeAll(async () => {
+  adminPool = new pg.Pool({ connectionString: ADMIN_URL, max: 1 });
+  await adminPool.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
+  await adminPool.query(`CREATE DATABASE ${TEST_DB}`);
+
+  pool = new pg.Pool({ connectionString: TEST_URL });
+  db = drizzle(pool, { schema });
+  await migrate(db, { migrationsFolder });
+
+  storageDir = await mkdtemp(path.join(tmpdir(), 'taxreturns-storage-'));
+  storage = new LocalDiskStorage(storageDir);
+
+  app = buildApp({ db, storage, anthropic: fake.client });
+}, 60_000);
+
+afterAll(async () => {
+  await app?.close();
+  await pool?.end();
+  await adminPool?.end();
+  await rm(storageDir, { recursive: true, force: true });
+});
+
+describe('tax years', () => {
+  it('creates a tax year (and the single default user) on POST /tax-years', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2025 },
+    });
+    expect(res.statusCode).toBe(201);
+    const row = res.json();
+    expect(row.year).toBe(2025);
+    expect(row.status).toBe('draft');
+    expect(row.id).toMatch(/^[0-9a-f-]{36}$/);
+    taxYearId = row.id;
+
+    const users = await db.select().from(schema.users);
+    expect(users).toHaveLength(1);
+  });
+
+  it('rejects a duplicate year with 409 and a Hebrew message', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2025 },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('rejects an invalid year with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 'לא שנה' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('lists tax years on GET /tax-years', async () => {
+    const second = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2024 },
+    });
+    expect(second.statusCode).toBe(201);
+
+    const res = await app.inject({ method: 'GET', url: '/tax-years' });
+    expect(res.statusCode).toBe(200);
+    const years = res.json().map((t: { year: number }) => t.year);
+    expect(years).toContain(2024);
+    expect(years).toContain(2025);
+  });
+});
+
+describe('document upload', () => {
+  it('uploads a document via multipart and stores the file', async () => {
+    const { payload, headers } = multipartBody({ kind: 'form106' }, pdfFile);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(201);
+    const row = res.json();
+    expect(row.kind).toBe('form106');
+    expect(row.taxYearId).toBe(taxYearId);
+    expect(row.extractionStatus).toBe('pending');
+    expect(row.originalFilename).toBe('tofes106.pdf');
+    expect(row.storageKey).toMatch(
+      new RegExp(`^${taxYearId}/[0-9a-f-]{36}-tofes106\\.pdf$`),
+    );
+
+    const stored = await storage.get(row.storageKey);
+    expect(stored.equals(pdfFile.data)).toBe(true);
+  });
+
+  it('404s for an unknown tax year', async () => {
+    const { payload, headers } = multipartBody({ kind: 'form106' }, pdfFile);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tax-years/${randomUUID()}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('400s on an invalid kind', async () => {
+    const { payload, headers } = multipartBody({ kind: 'form999' }, pdfFile);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('400s when no file part is sent', async () => {
+    const { payload, headers } = multipartBody({ kind: 'form106' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+});
+
+describe('extraction', () => {
+  it('extracts a pending document: persists extracted_fields, status → extracted', async () => {
+    fake.mode = 'ok';
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/extract`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.extractionStatus).toBe('extracted');
+    expect(body.extractedPayload.boxes).toEqual({
+      '158': 24_000_000,
+      '042': 3_600_000,
+    });
+
+    const rows = await db
+      .select()
+      .from(schema.extractedFields)
+      .where(eq(schema.extractedFields.documentId, doc.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.model).toBe(EXTRACTION_MODEL);
+    expect((rows[0]!.payload as { taxYear: number }).taxYear).toBe(2025);
+  });
+
+  it('marks the document failed (+reason) and responds 502 when extraction fails', async () => {
+    fake.mode = 'refuse';
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/extract`,
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+
+    const [row] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, doc.id));
+    expect(row!.extractionStatus).toBe('failed');
+    expect(row!.extractionError).toMatch(/[֐-׿]/);
+    fake.mode = 'ok';
+  });
+
+  it("400s on extract for kind 'other'", async () => {
+    const doc = await uploadDocument(app, taxYearId, 'other');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/extract`,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('404s on extract for an unknown document', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${randomUUID()}/extract`,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+const confirmedForm106 = {
+  taxYear: 2025,
+  employerName: 'אקמי בע"מ',
+  employerDeductionsFileId: '912345678',
+  employeeNationalId: '012345678',
+  boxes: { '158': 24_000_000, '042': 3_600_000 },
+  uncertainBoxes: [],
+};
+
+describe('confirmation', () => {
+  it('confirms an extracted document: confirmed_data row, status → confirmed', async () => {
+    fake.mode = 'ok';
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    await app.inject({ method: 'POST', url: `/documents/${doc.id}/extract` });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().extractionStatus).toBe('confirmed');
+
+    const rows = await db
+      .select()
+      .from(schema.confirmedData)
+      .where(eq(schema.confirmedData.documentId, doc.id));
+    expect(rows).toHaveLength(1);
+    expect((rows[0]!.payload as { taxYear: number }).taxYear).toBe(2025);
+  });
+
+  it('confirms straight from pending (manual-entry fallback)', async () => {
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().extractionStatus).toBe('confirmed');
+  });
+
+  it('rejects an invalid payload with 400 and a Hebrew message', async () => {
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: {
+        payload: { ...confirmedForm106, employeeNationalId: '12' },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+
+    const [row] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, doc.id));
+    expect(row!.extractionStatus).toBe('pending');
+  });
+
+  it("400s on confirm for kind 'other'", async () => {
+    const doc = await uploadDocument(app, taxYearId, 'other');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('404s on confirm for an unknown document', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/documents/${randomUUID()}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('GET /documents/:id', () => {
+  it('returns the row with latest extracted and confirmed payloads', async () => {
+    fake.mode = 'ok';
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    await app.inject({ method: 'POST', url: `/documents/${doc.id}/extract` });
+    await app.inject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/documents/${doc.id}` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.id).toBe(doc.id);
+    expect(body.extractionStatus).toBe('confirmed');
+    expect(body.extractedPayload.boxes['158']).toBe(24_000_000);
+    expect(body.confirmedPayload).toEqual(confirmedForm106);
+  });
+
+  it('returns null payloads for a fresh pending document', async () => {
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    const res = await app.inject({ method: 'GET', url: `/documents/${doc.id}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().extractedPayload).toBeNull();
+    expect(res.json().confirmedPayload).toBeNull();
+  });
+
+  it('404s for an unknown document id', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/documents/${randomUUID()}`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('404s for a malformed document id', async () => {
+    const res = await app.inject({ method: 'GET', url: '/documents/not-a-uuid' });
+    expect(res.statusCode).toBe(404);
+  });
+});
