@@ -13,13 +13,18 @@ import { TaxYearDetail } from './screens/TaxYearDetail';
 function RootLayout() {
   const { t } = useTranslation();
   return (
-    <div className="mx-auto min-h-screen max-w-4xl px-4 py-6">
-      <header className="mb-6 border-b border-neutral-200 pb-4">
-        <Link to="/" className="text-2xl font-bold text-neutral-900">
-          {t('app.title')}
-        </Link>
-      </header>
-      <Outlet />
+    <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+        <header className="mb-8 border-b border-neutral-200 pb-4 dark:border-neutral-800">
+          <Link
+            to="/"
+            className="rounded text-2xl font-bold tracking-tight text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:text-neutral-100"
+          >
+            {t('app.title')}
+          </Link>
+        </header>
+        <Outlet />
+      </div>
     </div>
   );
 }
