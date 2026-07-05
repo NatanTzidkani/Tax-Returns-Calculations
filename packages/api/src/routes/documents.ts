@@ -58,6 +58,25 @@ export async function documentRoutes(
     return doc;
   }
 
+  app.get('/tax-years/:taxYearId/documents', async (req, reply) => {
+    const { taxYearId: rawId } = req.params as { taxYearId: string };
+    const idParsed = uuid.safeParse(rawId);
+    if (!idParsed.success) {
+      return reply.code(404).send({ message: MSG.taxYearNotFound });
+    }
+    const [taxYear] = await deps.db
+      .select()
+      .from(taxYears)
+      .where(eq(taxYears.id, idParsed.data));
+    if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
+
+    return deps.db
+      .select()
+      .from(documents)
+      .where(eq(documents.taxYearId, taxYear.id))
+      .orderBy(documents.uploadedAt);
+  });
+
   app.post('/tax-years/:taxYearId/documents', async (req, reply) => {
     const { taxYearId: rawId } = req.params as { taxYearId: string };
     const idParsed = uuid.safeParse(rawId);

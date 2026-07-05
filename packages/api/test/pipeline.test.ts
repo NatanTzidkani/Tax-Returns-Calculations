@@ -257,6 +257,33 @@ describe('document upload', () => {
   });
 });
 
+describe('GET /tax-years/:taxYearId/documents', () => {
+  it('lists documents uploaded for that tax year', async () => {
+    const first = await uploadDocument(app, taxYearId, 'form106');
+    const second = await uploadDocument(app, taxYearId, 'form867');
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/tax-years/${taxYearId}/documents`,
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().map((d: { id: string }) => d.id);
+    expect(ids).toEqual(expect.arrayContaining([first.id, second.id]));
+    for (const doc of res.json()) {
+      expect(doc.taxYearId).toBe(taxYearId);
+    }
+  });
+
+  it('404s for an unknown tax year', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/tax-years/${randomUUID()}/documents`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+});
+
 describe('extraction', () => {
   it('extracts a pending document: persists extracted_fields, status → extracted', async () => {
     fake.mode = 'ok';
