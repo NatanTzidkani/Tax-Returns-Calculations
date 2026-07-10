@@ -160,8 +160,15 @@ function DocumentsPanel({ taxYearId }: { taxYearId: string }) {
               <span className="text-sm text-neutral-500 dark:text-neutral-500">
                 {uploadedAtFormatter.format(new Date(document.uploadedAt))}
               </span>
-              <span className="ms-auto">
+              <span className="ms-auto flex items-center gap-3">
                 <ExtractionStatusChip status={document.extractionStatus} />
+                <Link
+                  to="/tax-years/$taxYearId/documents/$documentId"
+                  params={{ taxYearId, documentId: document.id }}
+                  className="text-sm font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  {t('taxYearDetail.reviewLink')}
+                </Link>
               </span>
             </li>
           ))}
