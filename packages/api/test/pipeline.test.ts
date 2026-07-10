@@ -6,13 +6,20 @@ import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app';
 import * as schema from '../src/db/schema';
 import { EXTRACTION_MODEL, type ExtractionClient } from '../src/extraction/extractor';
 import { LocalDiskStorage } from '../src/storage/local-disk';
+import {
+  authedInjector,
+  fakeGoogleVerifier,
+  fakeGoogleVerifierRejecting,
+  OWNER_EMAIL,
+  signInAndGetCookie,
+} from './helpers/auth';
 
 // Real Postgres on the sibling container (spec §8 / plan Task 4). The admin
 // connection uses the dev `taxreturns` database ONLY to issue CREATE/DROP
@@ -103,7 +110,7 @@ async function uploadDocument(
   kind: string,
 ): Promise<{ id: string; storageKey: string }> {
   const { payload, headers } = multipartBody({ kind }, pdfFile);
-  const res = await app.inject({
+  const res = await authedInject({
     method: 'POST',
     url: `/tax-years/${taxYearId}/documents`,
     payload,
@@ -120,6 +127,7 @@ let storage: LocalDiskStorage;
 let storageDir: string;
 let app: FastifyInstance;
 let taxYearId: string;
+let authedInject: (opts: InjectOptions) => Promise<LightMyRequestResponse>;
 
 beforeAll(async () => {
   adminPool = new pg.Pool({ connectionString: ADMIN_URL, max: 1 });
@@ -133,7 +141,14 @@ beforeAll(async () => {
   storageDir = await mkdtemp(path.join(tmpdir(), 'taxreturns-storage-'));
   storage = new LocalDiskStorage(storageDir);
 
-  app = buildApp({ db, storage, anthropic: fake.client });
+  app = buildApp({
+    db,
+    storage,
+    anthropic: fake.client,
+    googleVerifier: fakeGoogleVerifier(),
+  });
+  const cookie = await signInAndGetCookie(app);
+  authedInject = authedInjector(app, cookie);
 }, 60_000);
 
 afterAll(async () => {
@@ -145,7 +160,7 @@ afterAll(async () => {
 
 describe('tax years', () => {
   it('creates a tax year (and the single default user) on POST /tax-years', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: '/tax-years',
       payload: { year: 2025 },
@@ -162,7 +177,7 @@ describe('tax years', () => {
   });
 
   it('rejects a duplicate year with 409 and a Hebrew message', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: '/tax-years',
       payload: { year: 2025 },
@@ -172,7 +187,7 @@ describe('tax years', () => {
   });
 
   it('rejects an invalid year with 400', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: '/tax-years',
       payload: { year: 'לא שנה' },
@@ -183,7 +198,7 @@ describe('tax years', () => {
 
   it('rejects a year after the current calendar year with 400', async () => {
     const nextYear = new Date().getUTCFullYear() + 1;
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: '/tax-years',
       payload: { year: nextYear },
@@ -194,7 +209,7 @@ describe('tax years', () => {
 
   it('accepts the current calendar year', async () => {
     const currentYear = new Date().getUTCFullYear();
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: '/tax-years',
       payload: { year: currentYear },
@@ -204,14 +219,14 @@ describe('tax years', () => {
   });
 
   it('lists tax years on GET /tax-years', async () => {
-    const second = await app.inject({
+    const second = await authedInject({
       method: 'POST',
       url: '/tax-years',
       payload: { year: 2024 },
     });
     expect(second.statusCode).toBe(201);
 
-    const res = await app.inject({ method: 'GET', url: '/tax-years' });
+    const res = await authedInject({ method: 'GET', url: '/tax-years' });
     expect(res.statusCode).toBe(200);
     const years = res.json().map((t: { year: number }) => t.year);
     expect(years).toContain(2024);
@@ -222,7 +237,7 @@ describe('tax years', () => {
 describe('document upload', () => {
   it('uploads a document via multipart and stores the file', async () => {
     const { payload, headers } = multipartBody({ kind: 'form106' }, pdfFile);
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/tax-years/${taxYearId}/documents`,
       payload,
@@ -244,7 +259,7 @@ describe('document upload', () => {
 
   it('404s for an unknown tax year', async () => {
     const { payload, headers } = multipartBody({ kind: 'form106' }, pdfFile);
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/tax-years/${randomUUID()}/documents`,
       payload,
@@ -256,7 +271,7 @@ describe('document upload', () => {
 
   it('400s on an invalid kind', async () => {
     const { payload, headers } = multipartBody({ kind: 'form999' }, pdfFile);
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/tax-years/${taxYearId}/documents`,
       payload,
@@ -268,7 +283,7 @@ describe('document upload', () => {
 
   it('400s when no file part is sent', async () => {
     const { payload, headers } = multipartBody({ kind: 'form106' });
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/tax-years/${taxYearId}/documents`,
       payload,
@@ -284,7 +299,7 @@ describe('GET /tax-years/:taxYearId/documents', () => {
     const first = await uploadDocument(app, taxYearId, 'form106');
     const second = await uploadDocument(app, taxYearId, 'form867');
 
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'GET',
       url: `/tax-years/${taxYearId}/documents`,
     });
@@ -297,7 +312,7 @@ describe('GET /tax-years/:taxYearId/documents', () => {
   });
 
   it('404s for an unknown tax year', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'GET',
       url: `/tax-years/${randomUUID()}/documents`,
     });
@@ -311,7 +326,7 @@ describe('extraction', () => {
     fake.mode = 'ok';
     const doc = await uploadDocument(app, taxYearId, 'form106');
 
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/extract`,
     });
@@ -336,7 +351,7 @@ describe('extraction', () => {
     fake.mode = 'refuse';
     const doc = await uploadDocument(app, taxYearId, 'form106');
 
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/extract`,
     });
@@ -354,7 +369,7 @@ describe('extraction', () => {
 
   it("400s on extract for kind 'other'", async () => {
     const doc = await uploadDocument(app, taxYearId, 'other');
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/extract`,
     });
@@ -363,7 +378,7 @@ describe('extraction', () => {
   });
 
   it('404s on extract for an unknown document', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${randomUUID()}/extract`,
     });
@@ -384,9 +399,9 @@ describe('confirmation', () => {
   it('confirms an extracted document: confirmed_data row, status → confirmed', async () => {
     fake.mode = 'ok';
     const doc = await uploadDocument(app, taxYearId, 'form106');
-    await app.inject({ method: 'POST', url: `/documents/${doc.id}/extract` });
+    await authedInject({ method: 'POST', url: `/documents/${doc.id}/extract` });
 
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/confirm`,
       payload: { payload: confirmedForm106 },
@@ -404,7 +419,7 @@ describe('confirmation', () => {
 
   it('confirms straight from pending (manual-entry fallback)', async () => {
     const doc = await uploadDocument(app, taxYearId, 'form106');
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/confirm`,
       payload: { payload: confirmedForm106 },
@@ -415,7 +430,7 @@ describe('confirmation', () => {
 
   it('rejects an invalid payload with 400 and a Hebrew message', async () => {
     const doc = await uploadDocument(app, taxYearId, 'form106');
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/confirm`,
       payload: {
@@ -434,7 +449,7 @@ describe('confirmation', () => {
 
   it("400s on confirm for kind 'other'", async () => {
     const doc = await uploadDocument(app, taxYearId, 'other');
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/confirm`,
       payload: { payload: confirmedForm106 },
@@ -443,7 +458,7 @@ describe('confirmation', () => {
   });
 
   it('404s on confirm for an unknown document', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'POST',
       url: `/documents/${randomUUID()}/confirm`,
       payload: { payload: confirmedForm106 },
@@ -456,14 +471,14 @@ describe('GET /documents/:id', () => {
   it('returns the row with latest extracted and confirmed payloads', async () => {
     fake.mode = 'ok';
     const doc = await uploadDocument(app, taxYearId, 'form106');
-    await app.inject({ method: 'POST', url: `/documents/${doc.id}/extract` });
-    await app.inject({
+    await authedInject({ method: 'POST', url: `/documents/${doc.id}/extract` });
+    await authedInject({
       method: 'POST',
       url: `/documents/${doc.id}/confirm`,
       payload: { payload: confirmedForm106 },
     });
 
-    const res = await app.inject({ method: 'GET', url: `/documents/${doc.id}` });
+    const res = await authedInject({ method: 'GET', url: `/documents/${doc.id}` });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.id).toBe(doc.id);
@@ -474,14 +489,14 @@ describe('GET /documents/:id', () => {
 
   it('returns null payloads for a fresh pending document', async () => {
     const doc = await uploadDocument(app, taxYearId, 'form106');
-    const res = await app.inject({ method: 'GET', url: `/documents/${doc.id}` });
+    const res = await authedInject({ method: 'GET', url: `/documents/${doc.id}` });
     expect(res.statusCode).toBe(200);
     expect(res.json().extractedPayload).toBeNull();
     expect(res.json().confirmedPayload).toBeNull();
   });
 
   it('404s for an unknown document id', async () => {
-    const res = await app.inject({
+    const res = await authedInject({
       method: 'GET',
       url: `/documents/${randomUUID()}`,
     });
@@ -490,7 +505,108 @@ describe('GET /documents/:id', () => {
   });
 
   it('404s for a malformed document id', async () => {
-    const res = await app.inject({ method: 'GET', url: '/documents/not-a-uuid' });
+    const res = await authedInject({ method: 'GET', url: '/documents/not-a-uuid' });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('auth', () => {
+  it('signs in with the owner email: 200 + Set-Cookie + upserted user', async () => {
+    const authApp = buildApp({ db, storage, googleVerifier: fakeGoogleVerifier() });
+    const res = await authApp.inject({
+      method: 'POST',
+      url: '/auth/google',
+      payload: { credential: 'fake-credential' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ id: expect.any(String), email: OWNER_EMAIL });
+    expect(res.cookies.some((c) => c.name === 'session')).toBe(true);
+    await authApp.close();
+  });
+
+  it('rejects sign-in with a different email: 403 Hebrew', async () => {
+    const authApp = buildApp({
+      db,
+      storage,
+      googleVerifier: fakeGoogleVerifier({ email: 'someone-else@example.com' }),
+    });
+    const res = await authApp.inject({
+      method: 'POST',
+      url: '/auth/google',
+      payload: { credential: 'fake-credential' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+    await authApp.close();
+  });
+
+  it('rejects sign-in with an invalid/unverifiable token: 401 Hebrew', async () => {
+    const authApp = buildApp({ db, storage, googleVerifier: fakeGoogleVerifierRejecting() });
+    const res = await authApp.inject({
+      method: 'POST',
+      url: '/auth/google',
+      payload: { credential: 'bad-token' },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+    await authApp.close();
+  });
+
+  it('rejects sign-in with a missing credential: 400 Hebrew', async () => {
+    const authApp = buildApp({ db, storage, googleVerifier: fakeGoogleVerifier() });
+    const res = await authApp.inject({ method: 'POST', url: '/auth/google', payload: {} });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+    await authApp.close();
+  });
+
+  it('GET /auth/me without a session cookie: 401 Hebrew', async () => {
+    const res = await app.inject({ method: 'GET', url: '/auth/me' });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('GET /auth/me with a valid session cookie: 200 + the signed-in user', async () => {
+    const res = await authedInject({ method: 'GET', url: '/auth/me' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ id: expect.any(String), email: OWNER_EMAIL });
+  });
+
+  it('POST /auth/logout clears the session: 204, then /auth/me 401s', async () => {
+    const authApp = buildApp({ db, storage, googleVerifier: fakeGoogleVerifier() });
+    const cookie = await signInAndGetCookie(authApp);
+    const injectAs = authedInjector(authApp, cookie);
+
+    const logoutRes = await injectAs({ method: 'POST', url: '/auth/logout' });
+    expect(logoutRes.statusCode).toBe(204);
+
+    // A well-behaved client drops the cookie logout just cleared rather than
+    // resending the stale one — secure-session is a stateless signed cookie,
+    // so a client that ignores the clearing Set-Cookie and keeps sending the
+    // old value would still authenticate (there's no server-side revocation
+    // list, by design).
+    const meRes = await authApp.inject({ method: 'GET', url: '/auth/me' });
+    expect(meRes.statusCode).toBe(401);
+    await authApp.close();
+  });
+
+  it('every protected route 401s without a session cookie', async () => {
+    const protectedRoutes: InjectOptions[] = [
+      { method: 'GET', url: '/tax-years' },
+      { method: 'POST', url: '/tax-years', payload: { year: 2025 } },
+      { method: 'GET', url: `/tax-years/${taxYearId}/documents` },
+      { method: 'GET', url: `/documents/${randomUUID()}` },
+    ];
+    for (const opts of protectedRoutes) {
+      const res = await app.inject(opts);
+      expect(res.statusCode).toBe(401);
+      expect(res.json().message).toMatch(/[֐-׿]/);
+    }
+  });
+
+  it('GET /health stays public — no auth required', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: 'ok' });
   });
 });
