@@ -59,6 +59,13 @@ export const resources = {
         calculationPlaceholder: 'דף החישוב המלא יוצג כאן לאחר אישור הנתונים',
         backToDashboard: 'חזרה לשנות המס',
       },
+      auth: {
+        signInTitle: 'התחברות',
+        signInSubtitle: 'התחברו עם חשבון Google כדי להמשיך',
+        signInError: 'ההתחברות נכשלה. נסו שוב.',
+        signedInAs: 'מחובר/ת בתור {{email}}',
+        signOut: 'התנתקות',
+      },
     },
   },
 } as const;
