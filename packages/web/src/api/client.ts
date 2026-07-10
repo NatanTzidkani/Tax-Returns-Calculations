@@ -1,4 +1,4 @@
-import type { CharityReceipt, Form106, Form867 } from '@taxreturns/shared';
+import type { AuthUser, CharityReceipt, Form106, Form867 } from '@taxreturns/shared';
 
 /**
  * Typed fetch client for the TaxReturns API.
@@ -42,17 +42,6 @@ export interface TaxDocument {
 
 /** Confirmed-data payload: one of the shared document schemas. */
 export type DocumentPayload = Form106 | Form867 | CharityReceipt;
-
-/**
- * TODO(auth-merge): replace with `import type { AuthUser } from
- * '@taxreturns/shared'` once the parallel backend branch lands
- * `AuthUserSchema` there (see docs/superpowers/plans/2026-07-06-google-sign-in.md
- * Task 1). Kept minimal and shape-compatible in the meantime.
- */
-export interface AuthUser {
-  id: string;
-  email: string;
-}
 
 export class ApiError extends Error {
   constructor(
