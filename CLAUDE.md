@@ -15,14 +15,14 @@ for but NOT built now.
 
 ## Current state (auth + document pipeline + UI foundations, 2026-07-06)
 
-All green (root `pnpm test`: shared 29, tax-engine 82, api 57, web 15 — clean
+All green (root `pnpm test`: shared 29, tax-engine 82, api 60, web 31 — clean
 typecheck; engine gated at ≥95% branch coverage):
 
 | Package | What exists |
 |---|---|
 | `packages/shared` | Branded `Agorot` money module; `Form106Schema`/`Form867Schema`/`CharityReceiptSchema` (Zod, `documentSchemas` map); `AuthUserSchema` |
 | `packages/api` | Fastify 5, `buildApp(deps?)` with injectable `db`/`storage`/`anthropic`/`googleVerifier`; Drizzle schema, all 7 tables migrated; **Google Sign-In**: `POST /auth/google` (ID-token verify via `google-auth-library`, single-owner-email allowlist), `GET /auth/me`, `POST /auth/logout`, `@fastify/secure-session` cookie, global fail-closed auth-gate `preHandler` (only `GET /health` and `POST /auth/google` are public) — see `docs/superpowers/plans/2026-07-06-google-sign-in.md`; document pipeline: `Storage`/`LocalDiskStorage`, multipart upload, Claude-vision extraction (`ExtractionClient` injectable), `pending→extracted→confirmed|failed`, manual-entry fallback — see `docs/superpowers/plans/2026-07-04-document-pipeline.md` |
-| `packages/web` | React 18 + Vite, Hebrew RTL, Tailwind v4 (logical properties only) + Radix + TanStack Router/Query; Dashboard (year list, Hebrew status chips, add-year capped at the current calendar year) and tax-year detail (documents panel with upload) screens, styled; **Google Sign-In**: `/sign-in` screen (`@react-oauth/google`), `useAuth()` hook, router `beforeLoad` guard redirecting unauthenticated visitors, header sign-out — see `docs/superpowers/plans/2026-07-06-google-sign-in.md` |
+| `packages/web` | React 18 + Vite, Hebrew RTL, Tailwind v4 (logical properties only) + Radix + TanStack Router/Query; Dashboard (year list, Hebrew status chips, add-year capped at the current calendar year), tax-year detail (documents panel with upload + per-row review link), and **document review** (`/tax-years/$id/documents/$id`: file viewer w/ zoom, kind-specific forms, uncertain-field highlighting, extract/manual-entry/confirm) screens, styled; **Google Sign-In**: `/sign-in` screen (`@react-oauth/google`), `useAuth()` hook, router `beforeLoad` guard, header sign-out — see `docs/superpowers/plans/2026-07-06-google-sign-in.md` |
 | `infra/` | `docker-compose.yml`: db (postgres:17) + api (:3000) + web (:5173); web's Vite proxy targets `http://api:3000` via `VITE_API_PROXY_TARGET` (Compose service-name DNS) |
 | `packages/tax-engine` | Pure TS engine (`calculate(input) → TaxReturnResult`, `ENGINE_VERSION`): IL 2024+2025 year data, **all constants owner-verified 2026-07-05** (`docs/superpowers/research/2026-07-05-tax-constants-verification.md` — zero corrections needed), modules for income-tax brackets, credit points, charity §46, capital gains w/ loss offset + carry-forward, pension §45א, surtax incl. 2025 2% capital add-on, informational NI reconciliation; `form1301Fields` map (official 1301 codes still owner-verified in Plan 5) |
 
@@ -49,11 +49,13 @@ Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §
    in the verification report above), §47 deductions, 15% non-linked-interest
    cases.
 2. ~~**Plan 3 — document pipeline**~~ DONE 2026-07-05.
-3. ~~**Plan 4 — UI screens**~~ Dashboard + tax-year detail DONE, styled.
-   **Not yet built**: Document review screen (image ⇄ extracted fields
-   side-by-side, uncertain fields highlighted) — needed before extraction
-   results are actually reviewable/confirmable from the UI (the API routes
-   exist; there's no screen for them yet).
+3. ~~**Plan 4 — UI screens**~~ DONE 2026-07-06 incl. the document review
+   screen (`docs/superpowers/plans/2026-07-06-document-review-screen.md`):
+   source file (`GET /documents/:id/file`, RFC 5987 Hebrew-filename safe)
+   beside a kind-specific extracted-fields form, uncertain fields
+   highlighted, extract / manual-entry / confirm per status, client-side
+   validation via the shared Zod schemas, duplicate-box-code and
+   blank/overflow money guards (reviewer-agent findings, all fixed).
 4. **Google Sign-In** DONE 2026-07-06 (see current-state table) — not a
    numbered spec plan, added mid-stream on owner request.
 5. **Plan 5 — filing & lifecycle** (next): Form 1301 field-map view; year
