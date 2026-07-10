@@ -91,7 +91,15 @@ function shekelInputToAgorot(value: string): number {
   const trimmed = value.trim();
   if (trimmed === '') return Number.NaN;
   const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? shekelsToAgorot(parsed) : Number.NaN;
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  try {
+    return shekelsToAgorot(parsed);
+  } catch {
+    // Finite but beyond the safe-integer range (e.g. "1e20") — feed the
+    // schema a NaN so it rejects like any other bad amount instead of an
+    // uncaught throw killing the submit handler with no UI feedback.
+    return Number.NaN;
+  }
 }
 
 function parseYear(value: string): number {
@@ -251,6 +259,7 @@ function Form106Form({
       : [{ code: '', amountShekels: '' }],
   );
   const [invalid, setInvalid] = useState(false);
+  const [duplicateCode, setDuplicateCode] = useState<string | null>(null);
 
   function updateRow(index: number, patch: Partial<BoxRow>) {
     setRows((current) =>
@@ -260,15 +269,29 @@ function Form106Form({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const activeRows = rows.filter(
+      (row) => row.code.trim() !== '' || row.amountShekels.trim() !== '',
+    );
+
+    // Folding rows into a record keeps only the LAST entry per code — a
+    // duplicate code would silently drop an amount from confirmed_data (the
+    // tax engine's only input), so refuse it loudly before parsing.
+    const codes = activeRows.map((row) => row.code.trim());
+    const duplicate = codes.find((code, i) => code !== '' && codes.indexOf(code) !== i);
+    if (duplicate) {
+      setDuplicateCode(duplicate);
+      setInvalid(false);
+      return;
+    }
+    setDuplicateCode(null);
+
     const candidate = {
       taxYear: parseYear(taxYear),
       employerName,
       employerDeductionsFileId: deductionsFileId,
       employeeNationalId: nationalId,
       boxes: Object.fromEntries(
-        rows
-          .filter((row) => row.code.trim() !== '' || row.amountShekels.trim() !== '')
-          .map((row) => [row.code.trim(), shekelInputToAgorot(row.amountShekels)]),
+        activeRows.map((row) => [row.code.trim(), shekelInputToAgorot(row.amountShekels)]),
       ),
     };
     const parsed = Form106Schema.safeParse(candidate);
@@ -413,6 +436,12 @@ function Form106Form({
           </div>
         )}
       </fieldset>
+
+      {duplicateCode ? (
+        <p role="alert" className={alertClasses}>
+          {t('documentReview.duplicateBox', { code: duplicateCode })}
+        </p>
+      ) : null}
 
       <FormActions
         readOnly={readOnly}

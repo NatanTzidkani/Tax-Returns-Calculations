@@ -81,6 +81,8 @@ export const resources = {
         confirm: 'אישור הנתונים',
         confirmError: 'אישור הנתונים נכשל',
         invalidForm: 'הנתונים שהוזנו אינם תקינים — יש לבדוק את השדות ולנסות שוב.',
+        duplicateBox:
+          'קוד התיבה {{code}} מופיע ביותר משורה אחת — יש לאחד את השורות הכפולות.',
         confirmedNote: 'המסמך אושר. הנתונים המאושרים מוצגים לקריאה בלבד.',
         editConfirmed: 'עריכה ואישור מחדש',
         otherKindNote:

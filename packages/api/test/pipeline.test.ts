@@ -266,6 +266,36 @@ describe('document upload', () => {
     expect(res.rawPayload.equals(pdfFile.data)).toBe(true);
   });
 
+  it('serves a file with a Hebrew filename (header must stay Latin-1 safe)', async () => {
+    const hebrewFile = {
+      filename: 'טופס 106 - 2024.pdf',
+      contentType: 'application/pdf',
+      data: Buffer.from('%PDF-1.4 hebrew name'),
+    };
+    const { payload, headers } = multipartBody({ kind: 'form106' }, hebrewFile);
+    const upload = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(upload.statusCode).toBe(201);
+
+    const res = await authedInject({
+      method: 'GET',
+      url: `/documents/${upload.json().id}/file`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    // RFC 5987 encoded form carries the real name; the plain filename= is
+    // an ASCII fallback.
+    expect(res.headers['content-disposition']).toContain(
+      `filename*=UTF-8''${encodeURIComponent('טופס 106 - 2024.pdf')}`,
+    );
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.rawPayload.equals(hebrewFile.data)).toBe(true);
+  });
+
   it('404s GET /documents/:id/file for an unknown document', async () => {
     const res = await authedInject({ method: 'GET', url: `/documents/${randomUUID()}/file` });
     expect(res.statusCode).toBe(404);

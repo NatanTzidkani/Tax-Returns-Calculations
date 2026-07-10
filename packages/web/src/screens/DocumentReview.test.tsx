@@ -245,6 +245,64 @@ describe('DocumentReview', () => {
     expect(confirmDocument).not.toHaveBeenCalled();
   });
 
+  it('rejects a duplicate box code with a specific error instead of silently dropping an amount', async () => {
+    vi.mocked(getDocument).mockResolvedValue(
+      makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+    );
+
+    const user = userEvent.setup();
+    await renderApp(REVIEW_PATH);
+
+    // Add a second row with a code that already exists (042).
+    await user.click(await screen.findByRole('button', { name: 'הוספת תיבה' }));
+    const codeInputs = screen.getAllByLabelText('קוד תיבה') as HTMLInputElement[];
+    await user.type(codeInputs.find((input) => input.value === '')!, '042');
+    const amountInputs = screen.getAllByLabelText('סכום (בש"ח)') as HTMLInputElement[];
+    await user.type(amountInputs.find((input) => input.value === '')!, '999');
+
+    await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+    expect(await screen.findByText(/קוד התיבה 042 מופיע ביותר משורה אחת/)).toBeTruthy();
+    expect(confirmDocument).not.toHaveBeenCalled();
+  });
+
+  it('rejects a blank money field client-side — a cleared amount never confirms as 0', async () => {
+    vi.mocked(getDocument).mockResolvedValue(
+      makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+    );
+
+    const user = userEvent.setup();
+    await renderApp(REVIEW_PATH);
+
+    const amountInputs = (await screen.findAllByLabelText(
+      'סכום (בש"ח)',
+    )) as HTMLInputElement[];
+    await user.clear(amountInputs[0]!);
+    await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+    expect(await screen.findByText(/הנתונים שהוזנו אינם תקינים/)).toBeTruthy();
+    expect(confirmDocument).not.toHaveBeenCalled();
+  });
+
+  it('rejects an absurdly large amount gracefully instead of throwing on agorot overflow', async () => {
+    vi.mocked(getDocument).mockResolvedValue(
+      makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+    );
+
+    const user = userEvent.setup();
+    await renderApp(REVIEW_PATH);
+
+    const amountInputs = (await screen.findAllByLabelText(
+      'סכום (בש"ח)',
+    )) as HTMLInputElement[];
+    await user.clear(amountInputs[0]!);
+    await user.type(amountInputs[0]!, '1e20');
+    await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+    expect(await screen.findByText(/הנתונים שהוזנו אינם תקינים/)).toBeTruthy();
+    expect(confirmDocument).not.toHaveBeenCalled();
+  });
+
   it('shows the extraction error with retry and manual entry for a failed document', async () => {
     vi.mocked(getDocument).mockResolvedValue(
       makeDoc({

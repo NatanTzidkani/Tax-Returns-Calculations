@@ -42,6 +42,21 @@ function isExtractable(kind: DocumentKind): kind is ExtractableDocumentKind {
   return kind !== 'other';
 }
 
+/**
+ * RFC 6266/5987 Content-Disposition. Header values must be Latin-1 — a raw
+ * Hebrew filename makes Node throw ERR_INVALID_CHAR (a 500). So: an
+ * ASCII-sanitized `filename=` fallback plus the real name percent-encoded
+ * in `filename*=UTF-8''…` (which is what browsers actually display).
+ */
+function inlineContentDisposition(filename: string): string {
+  const fallback = filename.replace(/"/g, "'").replace(/[^\x20-\x7e]/g, '_');
+  const encoded = encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function documentRoutes(
   app: FastifyInstance,
   opts: { deps: ResolvedDeps },
@@ -203,7 +218,10 @@ export async function documentRoutes(
     const data = await deps.storage.get(doc.storageKey);
     return reply
       .type(mediaTypeFor(doc.originalFilename))
-      .header('content-disposition', `inline; filename="${doc.originalFilename}"`)
+      .header('content-disposition', inlineContentDisposition(doc.originalFilename))
+      // The type comes from the stored filename's extension, not the bytes —
+      // tell browsers not to sniff their own idea of the content type.
+      .header('x-content-type-options', 'nosniff')
       .send(data);
   });
 
