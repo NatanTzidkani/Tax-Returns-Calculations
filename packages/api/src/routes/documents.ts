@@ -196,6 +196,17 @@ export async function documentRoutes(
     return reply.send({ ...updated, confirmedPayload: parsed.data });
   });
 
+  app.get('/documents/:id/file', async (req, reply) => {
+    const doc = await loadDocument((req.params as { id: string }).id);
+    if (!doc) return reply.code(404).send({ message: MSG.documentNotFound });
+
+    const data = await deps.storage.get(doc.storageKey);
+    return reply
+      .type(mediaTypeFor(doc.originalFilename))
+      .header('content-disposition', `inline; filename="${doc.originalFilename}"`)
+      .send(data);
+  });
+
   app.get('/documents/:id', async (req, reply) => {
     const doc = await loadDocument((req.params as { id: string }).id);
     if (!doc) return reply.code(404).send({ message: MSG.documentNotFound });

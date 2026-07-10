@@ -257,6 +257,21 @@ describe('document upload', () => {
     expect(stored.equals(pdfFile.data)).toBe(true);
   });
 
+  it('serves the raw uploaded file on GET /documents/:id/file', async () => {
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    const res = await authedInject({ method: 'GET', url: `/documents/${doc.id}/file` });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toContain('tofes106.pdf');
+    expect(res.rawPayload.equals(pdfFile.data)).toBe(true);
+  });
+
+  it('404s GET /documents/:id/file for an unknown document', async () => {
+    const res = await authedInject({ method: 'GET', url: `/documents/${randomUUID()}/file` });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
   it('404s for an unknown tax year', async () => {
     const { payload, headers } = multipartBody({ kind: 'form106' }, pdfFile);
     const res = await authedInject({
