@@ -181,6 +181,28 @@ describe('tax years', () => {
     expect(res.json().message).toMatch(/[֐-׿]/);
   });
 
+  it('rejects a year after the current calendar year with 400', async () => {
+    const nextYear = new Date().getUTCFullYear() + 1;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: nextYear },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('accepts the current calendar year', async () => {
+    const currentYear = new Date().getUTCFullYear();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: currentYear },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().year).toBe(currentYear);
+  });
+
   it('lists tax years on GET /tax-years', async () => {
     const second = await app.inject({
       method: 'POST',

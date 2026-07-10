@@ -42,6 +42,12 @@ export async function taxYearRoutes(
         .code(400)
         .send({ message: 'שנת מס לא תקינה — יש לשלוח מספר שנה שלם, למשל 2025' });
     }
+    const currentYear = new Date().getUTCFullYear();
+    if (parsed.data.year > currentYear) {
+      return reply.code(400).send({
+        message: `לא ניתן להוסיף שנת מס עתידית — השנה הנוכחית היא ${currentYear}`,
+      });
+    }
 
     const userId = await defaultUserId();
     try {

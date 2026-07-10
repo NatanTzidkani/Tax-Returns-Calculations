@@ -38,6 +38,8 @@ const mutedTextClasses = 'text-sm text-neutral-500 dark:text-neutral-400';
 const headerCellClasses =
   'px-4 py-2.5 text-start text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400';
 
+const currentYear = new Date().getFullYear();
+
 function AddTaxYearForm() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -53,7 +55,7 @@ function AddTaxYearForm() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsed = Number(year);
-    if (!Number.isInteger(parsed)) return;
+    if (!Number.isInteger(parsed) || parsed > currentYear) return;
     mutation.mutate(parsed);
   }
 
@@ -76,7 +78,7 @@ function AddTaxYearForm() {
             type="number"
             inputMode="numeric"
             min={2020}
-            max={2100}
+            max={currentYear}
             required
             value={year}
             onChange={(event) => setYear(event.target.value)}

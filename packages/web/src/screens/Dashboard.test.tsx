@@ -94,4 +94,21 @@ describe('Dashboard', () => {
     expect(await screen.findByRole('link', { name: '2025' })).toBeTruthy();
     expect(screen.getByText('טיוטה')).toBeTruthy();
   });
+
+  it('caps the year input at the current year and refuses to submit a future year', async () => {
+    vi.mocked(listTaxYears).mockResolvedValue([]);
+    const user = userEvent.setup();
+    await renderApp('/');
+
+    const currentYear = new Date().getFullYear();
+    const input = (await screen.findByLabelText('שנה')) as HTMLInputElement;
+    expect(input.max).toBe(String(currentYear));
+
+    await user.type(input, String(currentYear + 1));
+    await user.click(screen.getByRole('button', { name: 'הוספה' }));
+
+    // Give any (incorrect) submission a chance to fire before asserting it didn't.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(createTaxYear).not.toHaveBeenCalled();
+  });
 });
