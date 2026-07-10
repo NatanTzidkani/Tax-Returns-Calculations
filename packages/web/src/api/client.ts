@@ -43,6 +43,12 @@ export interface TaxDocument {
 /** Confirmed-data payload: one of the shared document schemas. */
 export type DocumentPayload = Form106 | Form867 | CharityReceipt;
 
+/** `GET /documents/:id` — the document plus its latest payloads. */
+export interface DocumentDetail extends TaxDocument {
+  extractedPayload: DocumentPayload | null;
+  confirmedPayload: DocumentPayload | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -102,8 +108,8 @@ export function extractDocument(documentId: string): Promise<TaxDocument> {
   return request<TaxDocument>(`/documents/${documentId}/extract`, { method: 'POST' });
 }
 
-export function getDocument(documentId: string): Promise<TaxDocument> {
-  return request<TaxDocument>(`/documents/${documentId}`);
+export function getDocument(documentId: string): Promise<DocumentDetail> {
+  return request<DocumentDetail>(`/documents/${documentId}`);
 }
 
 export function confirmDocument(

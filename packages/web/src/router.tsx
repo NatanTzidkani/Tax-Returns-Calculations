@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { getMe, signOut } from './api/client';
 import { authQueryKey, useAuth } from './auth/useAuth';
 import { Dashboard } from './screens/Dashboard';
+import { DocumentReview } from './screens/DocumentReview';
 import { SignIn } from './screens/SignIn';
 import { TaxYearDetail } from './screens/TaxYearDetail';
 
@@ -107,13 +108,25 @@ const taxYearDetailRoute = createRoute({
   beforeLoad: requireAuth,
 });
 
+const documentReviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/tax-years/$taxYearId/documents/$documentId',
+  component: DocumentReview,
+  beforeLoad: requireAuth,
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
   component: SignIn,
 });
 
-const routeTree = rootRoute.addChildren([dashboardRoute, taxYearDetailRoute, signInRoute]);
+const routeTree = rootRoute.addChildren([
+  dashboardRoute,
+  taxYearDetailRoute,
+  documentReviewRoute,
+  signInRoute,
+]);
 
 export function createAppRouter(history?: RouterHistory, queryClient?: QueryClient) {
   return createRouter({

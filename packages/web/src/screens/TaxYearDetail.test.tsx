@@ -60,6 +60,20 @@ describe('TaxYearDetail', () => {
     expect(vi.mocked(listDocuments)).toHaveBeenCalledWith('ty-2024');
   });
 
+  it('links each document row to the review screen', async () => {
+    await renderApp('/tax-years/ty-2024');
+
+    const list = await screen.findByRole('list');
+    const reviewLinks = within(list).getAllByRole('link', { name: 'בדיקה ואישור' });
+    expect(reviewLinks).toHaveLength(2);
+    expect(reviewLinks[0]!.getAttribute('href')).toBe(
+      '/tax-years/ty-2024/documents/doc-1',
+    );
+    expect(reviewLinks[1]!.getAttribute('href')).toBe(
+      '/tax-years/ty-2024/documents/doc-2',
+    );
+  });
+
   it('uploads a document with the selected kind', async () => {
     const uploaded: TaxDocument = {
       id: 'doc-3',
