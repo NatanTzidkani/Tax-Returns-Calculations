@@ -7,7 +7,7 @@ import './index.css';
 import { createAppRouter } from './router';
 
 const queryClient = new QueryClient();
-const router = createAppRouter();
+const router = createAppRouter(undefined, queryClient);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

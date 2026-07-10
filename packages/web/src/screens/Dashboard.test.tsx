@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { agorot, formatILS } from '@taxreturns/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaxYear } from '../api/client';
-import { createTaxYear, listTaxYears } from '../api/client';
+import { createTaxYear, getMe, listTaxYears } from '../api/client';
 import { renderApp } from '../test/render';
 
 vi.mock('../api/client');
@@ -30,6 +30,9 @@ const taxYears: TaxYear[] = [
 beforeEach(() => {
   vi.mocked(listTaxYears).mockReset();
   vi.mocked(createTaxYear).mockReset();
+  vi.mocked(getMe)
+    .mockReset()
+    .mockResolvedValue({ id: 'u1', email: 'owner@example.com' });
 });
 
 describe('Dashboard', () => {

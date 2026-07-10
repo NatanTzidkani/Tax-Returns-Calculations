@@ -12,7 +12,10 @@ export async function renderApp(path: string) {
       mutations: { retry: false },
     },
   });
-  const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }));
+  const router = createAppRouter(
+    createMemoryHistory({ initialEntries: [path] }),
+    queryClient,
+  );
   const result = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />

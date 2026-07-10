@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaxDocument, TaxYear } from '../api/client';
-import { listDocuments, listTaxYears, uploadDocument } from '../api/client';
+import { getMe, listDocuments, listTaxYears, uploadDocument } from '../api/client';
 import { renderApp } from '../test/render';
 
 vi.mock('../api/client');
@@ -34,6 +34,9 @@ beforeEach(() => {
   vi.mocked(listTaxYears).mockReset().mockResolvedValue([taxYear]);
   vi.mocked(listDocuments).mockReset().mockResolvedValue(documents);
   vi.mocked(uploadDocument).mockReset();
+  vi.mocked(getMe)
+    .mockReset()
+    .mockResolvedValue({ id: 'u1', email: 'owner@example.com' });
 });
 
 describe('TaxYearDetail', () => {

@@ -43,6 +43,17 @@ export interface TaxDocument {
 /** Confirmed-data payload: one of the shared document schemas. */
 export type DocumentPayload = Form106 | Form867 | CharityReceipt;
 
+/**
+ * TODO(auth-merge): replace with `import type { AuthUser } from
+ * '@taxreturns/shared'` once the parallel backend branch lands
+ * `AuthUserSchema` there (see docs/superpowers/plans/2026-07-06-google-sign-in.md
+ * Task 1). Kept minimal and shape-compatible in the meantime.
+ */
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -54,7 +65,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, init);
+  const response = await fetch(`/api${path}`, { credentials: 'same-origin', ...init });
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
@@ -114,4 +125,28 @@ export function confirmDocument(
     `/documents/${documentId}/confirm`,
     jsonInit('POST', { payload }),
   );
+}
+
+export function signInWithGoogle(credential: string): Promise<AuthUser> {
+  return request<AuthUser>('/auth/google', jsonInit('POST', { credential }));
+}
+
+/**
+ * Resolves the signed-in user, or `null` if there isn't one. A 401 from
+ * `/auth/me` is the expected "not signed in" state, not a failure — it's
+ * caught here so callers never have to know the transport detail.
+ */
+export async function getMe(): Promise<AuthUser | null> {
+  try {
+    return await request<AuthUser>('/auth/me');
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function signOut(): Promise<void> {
+  return request<void>('/auth/logout', { method: 'POST' });
 }
