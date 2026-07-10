@@ -590,6 +590,16 @@ describe('auth', () => {
     await authApp.close();
   });
 
+  it('treats a forged/tampered session cookie as unauthenticated (401), never a 500 or a bypass', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      headers: { cookie: 'session=this-is-not-a-valid-encrypted-payload' },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
   it('every protected route 401s without a session cookie', async () => {
     const protectedRoutes: InjectOptions[] = [
       { method: 'GET', url: '/tax-years' },
