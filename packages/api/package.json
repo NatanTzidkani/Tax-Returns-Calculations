@@ -15,6 +15,7 @@
     "@fastify/multipart": "^9.0.0",
     "@fastify/secure-session": "^8.3.0",
     "@taxreturns/shared": "workspace:*",
+    "@taxreturns/tax-engine": "workspace:*",
     "dotenv": "^16.4.0",
     "google-auth-library": "^10.9.0",
     "zod": "^4.0.0",

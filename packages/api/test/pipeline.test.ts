@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ENGINE_VERSION } from '@taxreturns/tax-engine';
 import { eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -651,6 +652,17 @@ describe('auth', () => {
       { method: 'POST', url: '/tax-years', payload: { year: 2025 } },
       { method: 'GET', url: `/tax-years/${taxYearId}/documents` },
       { method: 'GET', url: `/documents/${randomUUID()}` },
+      {
+        method: 'POST',
+        url: `/tax-years/${taxYearId}/calculate`,
+        payload: { taxpayer: { gender: 'male' } },
+      },
+      { method: 'GET', url: `/tax-years/${taxYearId}/calculation` },
+      {
+        method: 'PATCH',
+        url: `/tax-years/${taxYearId}/status`,
+        payload: { status: 'in_review' },
+      },
     ];
     for (const opts of protectedRoutes) {
       const res = await app.inject(opts);
@@ -663,5 +675,379 @@ describe('auth', () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: 'ok' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan 5 — calculation wiring, carry-forward, status flow (contract in
+// docs/superpowers/plans/2026-07-07-calculation-and-filing.md).
+// ---------------------------------------------------------------------------
+
+const taxpayerBody = { taxpayer: { gender: 'male' as const } };
+
+async function findYearId(year: number): Promise<string> {
+  const res = await authedInject({ method: 'GET', url: '/tax-years' });
+  expect(res.statusCode).toBe(200);
+  const row = res.json().find((t: { year: number }) => t.year === year);
+  expect(row).toBeDefined();
+  return row.id;
+}
+
+describe('POST /tax-years/:id/calculate', () => {
+  let firstCalculationId: string;
+
+  it('calculates from the confirmed data and persists a snapshot', async () => {
+    // By this point the 2025 year (taxYearId) has exactly 3 confirmed
+    // form106 documents, each with boxes 158=24,000,000 / 042=3,600,000.
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.taxYearId).toBe(taxYearId);
+    expect(body.engineVersion).toBe(ENGINE_VERSION);
+    expect(body.metadata).toEqual({ excludedDonations: 0 });
+
+    // Engine input mapped only from confirmed_data (never extracted_fields):
+    expect(body.input.year).toBe(2025);
+    expect(body.input.taxpayer).toEqual({
+      gender: 'male',
+      isIsraeliResident: true,
+      additionalCreditPoints: 0,
+    });
+    expect(body.input.salaries).toHaveLength(3);
+    for (const salary of body.input.salaries) {
+      expect(salary).toEqual({
+        employerName: 'אקמי בע"מ',
+        grossSalaryAgorot: 24_000_000,
+        taxWithheldAgorot: 3_600_000,
+        pensionEmployeeContributionAgorot: 0,
+      });
+    }
+
+    expect(body.result.year).toBe(2025);
+    expect(body.result.totalWithheldAgorot).toBe(3 * 3_600_000);
+    expect(typeof body.result.refundAgorot).toBe('number');
+
+    const rows = await db
+      .select()
+      .from(schema.calculations)
+      .where(eq(schema.calculations.taxYearId, taxYearId));
+    expect(rows).toHaveLength(1);
+    firstCalculationId = rows[0]!.id;
+  });
+
+  it('recalculating appends a SECOND snapshot (append-only) and returns the new one', async () => {
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().id).not.toBe(firstCalculationId);
+
+    const rows = await db
+      .select()
+      .from(schema.calculations)
+      .where(eq(schema.calculations.taxYearId, taxYearId));
+    expect(rows).toHaveLength(2);
+  });
+
+  it('a year with zero confirmed documents is a legal zero return', async () => {
+    const year2024Id = await findYearId(2024);
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${year2024Id}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.input.salaries).toEqual([]);
+    expect(body.result.totalLiabilityAgorot).toBe(0);
+    expect(body.result.refundAgorot).toBe(0);
+  });
+
+  it('400s (Hebrew) on an invalid body', async () => {
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/calculate`,
+      payload: { taxpayer: { gender: 'unknown' } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('400s (Hebrew) when the engine rejects the year (2023 has no rule set)', async () => {
+    const create = await authedInject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2023 },
+    });
+    expect(create.statusCode).toBe(201);
+
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${create.json().id}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+    expect(res.json().message).toContain('2023');
+  });
+
+  it('404s for an unknown tax year', async () => {
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${randomUUID()}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+});
+
+describe('loss carry-forward across years', () => {
+  const form867Loss = {
+    taxYear: 2024,
+    brokerName: 'בנק דיסקונט',
+    realGainsAgorot: 0,
+    realLossesAgorot: 5_000_000,
+    interestDividendAgorot: 0,
+    taxWithheldAgorot: 0,
+    uncertainFields: [],
+  };
+  let year2024Id: string;
+
+  it('a net capital loss in year A writes a loss_carryforward row', async () => {
+    year2024Id = await findYearId(2024);
+    const doc = await uploadDocument(app, year2024Id, 'form867');
+    const confirm = await authedInject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: { payload: form867Loss },
+    });
+    expect(confirm.statusCode).toBe(200);
+
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${year2024Id}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.lossCarryforwardOutAgorot).toBe(5_000_000);
+
+    const rows = await db
+      .select()
+      .from(schema.lossCarryforward)
+      .where(eq(schema.lossCarryforward.fromYear, 2024));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      amountAgorot: 5_000_000,
+      kind: 'capital',
+      consumedByYear: null,
+    });
+  });
+
+  it('a later year picks the carry-forward up in its engine input', async () => {
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.input.capital.lossCarryforwardInAgorot).toBe(5_000_000);
+    expect(body.result.capitalGains.lossCarryforwardInAgorot).toBe(5_000_000);
+    // 2025 has no gains to consume it — it flows out again.
+    expect(body.result.capitalGains.carryforwardConsumedAgorot).toBe(0);
+  });
+
+  it('recalculating year A REPLACES its carry-forward row, never duplicates', async () => {
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${year2024Id}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+
+    const rows = await db
+      .select()
+      .from(schema.lossCarryforward)
+      .where(eq(schema.lossCarryforward.fromYear, 2024));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amountAgorot).toBe(5_000_000);
+  });
+});
+
+describe('GET /tax-years/:id/calculation', () => {
+  it('returns the latest calculation with stale:false right after calculating', async () => {
+    const res = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${taxYearId}/calculation`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.taxYearId).toBe(taxYearId);
+    expect(body.engineVersion).toBe(ENGINE_VERSION);
+    expect(body.stale).toBe(false);
+    // Latest = the carry-forward-aware recalculation from the block above.
+    expect(body.input.capital.lossCarryforwardInAgorot).toBe(5_000_000);
+  });
+
+  it('flips stale to true after a document is re-confirmed', async () => {
+    const docs = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${taxYearId}/documents`,
+    });
+    const confirmedDoc = docs
+      .json()
+      .find((d: { extractionStatus: string }) => d.extractionStatus === 'confirmed');
+    expect(confirmedDoc).toBeDefined();
+    const reconfirm = await authedInject({
+      method: 'POST',
+      url: `/documents/${confirmedDoc.id}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+    expect(reconfirm.statusCode).toBe(200);
+
+    const res = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${taxYearId}/calculation`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().stale).toBe(true);
+  });
+
+  it('404s (Hebrew) when the year exists but was never calculated', async () => {
+    const year2023Id = await findYearId(2023);
+    const res = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${year2023Id}/calculation`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('404s for an unknown year', async () => {
+    const res = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${randomUUID()}/calculation`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+});
+
+describe('PATCH /tax-years/:id/status', () => {
+  let year2023Id: string;
+
+  async function patchStatus(status: string) {
+    return authedInject({
+      method: 'PATCH',
+      url: `/tax-years/${year2023Id}/status`,
+      payload: { status },
+    });
+  }
+
+  it('rejects an illegal transition (draft→filed) with 400 naming the current status', async () => {
+    year2023Id = await findYearId(2023);
+    const res = await patchStatus('filed');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+    expect(res.json().message).toContain('draft');
+  });
+
+  it('walks the legal path draft→in_review→ready_to_file→filed, setting filedAt', async () => {
+    const toReview = await patchStatus('in_review');
+    expect(toReview.statusCode).toBe(200);
+    expect(toReview.json().status).toBe('in_review');
+    expect(toReview.json().filedAt).toBeNull();
+
+    const toReady = await patchStatus('ready_to_file');
+    expect(toReady.statusCode).toBe(200);
+    expect(toReady.json().status).toBe('ready_to_file');
+
+    const toFiled = await patchStatus('filed');
+    expect(toFiled.statusCode).toBe(200);
+    expect(toFiled.json().status).toBe('filed');
+    expect(toFiled.json().filedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('supports the backward steps in_review→draft and ready_to_file→in_review', async () => {
+    // 2024 is still draft — walk it forward and back.
+    const year2024Id = await findYearId(2024);
+    const patch = (status: string) =>
+      authedInject({
+        method: 'PATCH',
+        url: `/tax-years/${year2024Id}/status`,
+        payload: { status },
+      });
+    expect((await patch('in_review')).statusCode).toBe(200);
+    expect((await patch('ready_to_file')).statusCode).toBe(200);
+    const back = await patch('in_review');
+    expect(back.statusCode).toBe(200);
+    expect(back.json().status).toBe('in_review');
+    const toDraft = await patch('draft');
+    expect(toDraft.statusCode).toBe(200);
+    expect(toDraft.json().status).toBe('draft');
+  });
+
+  it('rejects filed→in_review (only amended is legal from filed)', async () => {
+    const res = await patchStatus('in_review');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain('filed');
+  });
+
+  it('filed→amended keeps filedAt as history, and amended→in_review continues', async () => {
+    const amended = await patchStatus('amended');
+    expect(amended.statusCode).toBe(200);
+    expect(amended.json().status).toBe('amended');
+    expect(amended.json().filedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const review = await patchStatus('in_review');
+    expect(review.statusCode).toBe(200);
+    expect(review.json().status).toBe('in_review');
+    expect(review.json().filedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('400s (Hebrew) on an unknown status value', async () => {
+    const res = await patchStatus('done');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('404s for an unknown tax year', async () => {
+    const res = await authedInject({
+      method: 'PATCH',
+      url: `/tax-years/${randomUUID()}/status`,
+      payload: { status: 'in_review' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+});
+
+describe('GET /tax-years refund estimates', () => {
+  it('carries refundEstimateAgorot from the latest calculation, null without one', async () => {
+    const latestCalc = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${taxYearId}/calculation`,
+    });
+    expect(latestCalc.statusCode).toBe(200);
+    const expectedRefund = latestCalc.json().result.refundAgorot;
+
+    const res = await authedInject({ method: 'GET', url: '/tax-years' });
+    expect(res.statusCode).toBe(200);
+    const byYear = new Map(
+      res.json().map((t: { year: number; refundEstimateAgorot: number | null }) => [
+        t.year,
+        t.refundEstimateAgorot,
+      ]),
+    );
+    expect(byYear.get(2025)).toBe(expectedRefund);
+    expect(typeof byYear.get(2025)).toBe('number');
+    expect(byYear.get(2023)).toBeNull(); // year exists, never calculated
   });
 });
