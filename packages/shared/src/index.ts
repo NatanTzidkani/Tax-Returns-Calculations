@@ -4,3 +4,4 @@ export * from './documents/form867';
 export * from './documents/charity-receipt';
 export * from './documents';
 export * from './auth';
+export * from './calculation';
