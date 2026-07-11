@@ -13,3 +13,10 @@ Israeli personal tax-return assistant. See
 
 Development is intended to happen inside the dev container (`.devcontainer/`),
 which ships Node 22, pnpm, and Claude Code.
+
+## Backups
+
+`scripts/backup.sh [output-root]` writes a dated directory (default
+`backups/<timestamp>/`) containing a full `pg_dump` of the database (taken
+through the running compose `db` container) and a tar of the uploaded
+documents directory. Requires the db container to be running.
