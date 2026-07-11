@@ -22,6 +22,9 @@ importers:
       '@taxreturns/shared':
         specifier: workspace:*
         version: link:../shared
+      '@taxreturns/tax-engine':
+        specifier: workspace:*
+        version: link:../tax-engine
       dotenv:
         specifier: ^16.4.0
         version: 16.6.1
