@@ -156,7 +156,9 @@ afterAll(async () => {
   await app?.close();
   await pool?.end();
   await adminPool?.end();
-  await rm(storageDir, { recursive: true, force: true });
+  // storageDir stays undefined when beforeAll fails early (e.g. db down) —
+  // don't cascade a TypeError over the real setup error.
+  if (storageDir) await rm(storageDir, { recursive: true, force: true });
 });
 
 describe('tax years', () => {
