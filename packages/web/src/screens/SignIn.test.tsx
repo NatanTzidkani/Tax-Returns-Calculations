@@ -70,9 +70,26 @@ describe('SignIn', () => {
     expect(await screen.findByRole('heading', { name: 'שנות מס' })).toBeTruthy();
   });
 
-  it('shows a Hebrew alert when signInWithGoogle rejects', async () => {
+  it('surfaces the backend ApiError message verbatim when signInWithGoogle rejects with 403', async () => {
     vi.mocked(getMe).mockResolvedValue(null);
-    vi.mocked(signInWithGoogle).mockRejectedValue(new ApiError(403, 'wrong email'));
+    vi.mocked(signInWithGoogle).mockRejectedValue(
+      new ApiError(403, 'ההתחברות אינה מורשית עבור חשבון Google זה'),
+    );
+
+    const user = userEvent.setup();
+    await renderApp('/sign-in');
+
+    await user.click(await screen.findByRole('button', { name: 'fake-google-success' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'ההתחברות אינה מורשית עבור חשבון Google זה',
+    );
+  });
+
+  it('falls back to the generic Hebrew alert when the rejection has no ApiError message', async () => {
+    vi.mocked(getMe).mockResolvedValue(null);
+    vi.mocked(signInWithGoogle).mockRejectedValue(new Error('network'));
 
     const user = userEvent.setup();
     await renderApp('/sign-in');

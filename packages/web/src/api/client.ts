@@ -125,6 +125,15 @@ export function createTaxYear(year: number): Promise<TaxYear> {
   return request<TaxYear>('/tax-years', jsonInit('POST', { year }));
 }
 
+/**
+ * `DELETE /tax-years/:id`. Resolves on the API's 204; a missing year comes
+ * back as a 404 with a Hebrew message (surfaced via ApiError). Deletes the
+ * year and all its documents/calculations server-side.
+ */
+export function deleteTaxYear(taxYearId: string): Promise<void> {
+  return request<void>(`/tax-years/${taxYearId}`, { method: 'DELETE' });
+}
+
 export function listDocuments(taxYearId: string): Promise<TaxDocument[]> {
   return request<TaxDocument[]>(`/tax-years/${taxYearId}/documents`);
 }

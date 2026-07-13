@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getRouteApi, Link } from '@tanstack/react-router';
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
 import { Label } from 'radix-ui';
 import { type FormEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,7 @@ import {
   listTaxYears,
   uploadDocument,
 } from '../api/client';
+import { DeleteTaxYearDialog } from '../components/DeleteTaxYearDialog';
 import { ExtractionStatusChip } from '../components/StatusChip';
 import { WorksheetPanel } from '../components/WorksheetPanel';
 
@@ -202,6 +203,7 @@ function PlaceholderPanel({
 
 export function TaxYearDetail() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { taxYearId } = route.useParams();
   const taxYearsQuery = useQuery({ queryKey: ['tax-years'], queryFn: listTaxYears });
   const taxYear = taxYearsQuery.data?.find((candidate) => candidate.id === taxYearId);
@@ -216,11 +218,21 @@ export function TaxYearDetail() {
           {t('taxYearDetail.backToDashboard')}
         </Link>
       </nav>
-      <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-        {taxYear
-          ? t('taxYearDetail.title', { year: taxYear.year })
-          : t('taxYearDetail.titleUnknown')}
-      </h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+          {taxYear
+            ? t('taxYearDetail.title', { year: taxYear.year })
+            : t('taxYearDetail.titleUnknown')}
+        </h1>
+        {taxYear ? (
+          <DeleteTaxYearDialog
+            taxYearId={taxYear.id}
+            year={taxYear.year}
+            variant="header"
+            onDeleted={() => void navigate({ to: '/' })}
+          />
+        ) : null}
+      </div>
       {/* Plan 5: Form 1301 filing view + year status flow. */}
       <p className="mt-2 text-sm">
         <Link

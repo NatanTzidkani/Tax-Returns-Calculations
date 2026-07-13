@@ -5,6 +5,7 @@ import { Label } from 'radix-ui';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTaxYear, listTaxYears, type TaxYear } from '../api/client';
+import { DeleteTaxYearDialog } from '../components/DeleteTaxYearDialog';
 import { TaxYearStatusChip } from '../components/StatusChip';
 
 const deadlineFormatter = new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' });
@@ -135,6 +136,9 @@ export function Dashboard() {
                 <th scope="col" className={headerCellClasses}>
                   {t('dashboard.columnRefund')}
                 </th>
+                <th scope="col" className={`${headerCellClasses} text-end`}>
+                  {t('dashboard.columnActions')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -162,6 +166,13 @@ export function Dashboard() {
                   </td>
                   <td className="px-4 py-3 text-sm font-medium tabular-nums text-neutral-900 dark:text-neutral-100">
                     {refundCell(taxYear, t('common.none'))}
+                  </td>
+                  <td className="px-4 py-3 text-end">
+                    <DeleteTaxYearDialog
+                      taxYearId={taxYear.id}
+                      year={taxYear.year}
+                      variant="row"
+                    />
                   </td>
                 </tr>
               ))}

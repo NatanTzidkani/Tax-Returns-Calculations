@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { signInWithGoogle } from '../api/client';
+import { ApiError, signInWithGoogle } from '../api/client';
 import { authQueryKey } from '../auth/useAuth';
 
 const panelClasses =
@@ -19,16 +19,25 @@ export function SignIn() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [hasError, setHasError] = useState(false);
+  // Holds the Hebrew message to show the user, or null when there's no error.
+  // Backend rejections (403 "not authorized", 401…) come through as an
+  // ApiError whose `.message` is already the Hebrew server text — surface it
+  // verbatim so a rejected re-sign-in after logout is never silent.
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: (credential: string) => signInWithGoogle(credential),
     onSuccess: async () => {
-      setHasError(false);
+      setErrorMessage(null);
       await queryClient.invalidateQueries({ queryKey: authQueryKey });
       await navigate({ to: '/' });
     },
-    onError: () => setHasError(true),
+    onError: (error) =>
+      setErrorMessage(
+        error instanceof ApiError && error.message
+          ? error.message
+          : t('auth.signInError'),
+      ),
   });
 
   return (
@@ -45,19 +54,23 @@ export function SignIn() {
           <GoogleLogin
             onSuccess={(credentialResponse) => {
               if (!credentialResponse.credential) {
-                setHasError(true);
+                setErrorMessage(t('auth.signInError'));
                 return;
               }
               mutation.mutate(credentialResponse.credential);
             }}
-            onError={() => setHasError(true)}
+            onError={() => setErrorMessage(t('auth.signInError'))}
+            // Never silently re-use the last account: after signing out the
+            // owner must be able to pick a Google account, so opt out of
+            // automatic selection.
+            auto_select={false}
           />
         </GoogleOAuthProvider>
       </div>
 
-      {hasError ? (
+      {errorMessage ? (
         <p role="alert" className={alertClasses}>
-          {t('auth.signInError')}
+          {errorMessage}
         </p>
       ) : null}
     </main>

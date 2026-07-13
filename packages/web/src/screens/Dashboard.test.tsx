@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { agorot, formatILS } from '@taxreturns/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaxYear } from '../api/client';
-import { createTaxYear, getMe, listTaxYears } from '../api/client';
+import { createTaxYear, deleteTaxYear, getMe, listTaxYears } from '../api/client';
 import { renderApp } from '../test/render';
 
 vi.mock('../api/client');
@@ -30,6 +30,7 @@ const taxYears: TaxYear[] = [
 beforeEach(() => {
   vi.mocked(listTaxYears).mockReset();
   vi.mocked(createTaxYear).mockReset();
+  vi.mocked(deleteTaxYear).mockReset().mockResolvedValue(undefined);
   vi.mocked(getMe)
     .mockReset()
     .mockResolvedValue({ id: 'u1', email: 'owner@example.com' });
@@ -96,6 +97,55 @@ describe('Dashboard', () => {
     });
     expect(await screen.findByRole('link', { name: '2025' })).toBeTruthy();
     expect(screen.getByText('טיוטה')).toBeTruthy();
+  });
+
+  it('renders an accessible per-row delete (trash) button for each tax year', async () => {
+    vi.mocked(listTaxYears).mockResolvedValue(taxYears);
+    await renderApp('/');
+
+    expect(
+      await screen.findByRole('button', { name: 'מחיקת שנת מס 2023' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'מחיקת שנת מס 2024' })).toBeTruthy();
+  });
+
+  it('deletes a tax year from its row only after confirming, without navigating', async () => {
+    vi.mocked(listTaxYears).mockResolvedValue(taxYears);
+
+    const user = userEvent.setup();
+    const { router } = await renderApp('/');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'מחיקת שנת מס 2023' }),
+    );
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(deleteTaxYear).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'מחיקה' }));
+
+    await waitFor(() => expect(deleteTaxYear).toHaveBeenCalledWith('ty-2023'), {
+      timeout: 10_000,
+    });
+    expect(deleteTaxYear).toHaveBeenCalledTimes(1);
+    // The trash click must not have navigated to the year's detail screen.
+    expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('does not delete when the row confirmation dialog is cancelled', async () => {
+    vi.mocked(listTaxYears).mockResolvedValue(taxYears);
+
+    const user = userEvent.setup();
+    await renderApp('/');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'מחיקת שנת מס 2024' }),
+    );
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'ביטול' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(deleteTaxYear).not.toHaveBeenCalled();
   });
 
   it('caps the year input at the current year and refuses to submit a future year', async () => {

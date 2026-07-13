@@ -10,6 +10,15 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     server: {
+      // Google Identity Services opens a sign-in popup that postMessages the
+      // credential back to this window. The default COOP (`same-origin`) severs
+      // that popup↔opener link ("Cross-Origin-Opener-Policy policy would block
+      // the window.postMessage call"), so relax it to allow popups; COEP is
+      // left unenforced so the cross-origin Google frames/scripts still load.
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+        'Cross-Origin-Embedder-Policy': 'unsafe-none',
+      },
       proxy: {
         // The web app always calls `/api/*`; the API itself serves routes at
         // the root (`/tax-years`, `/documents/...`), so the prefix is stripped.

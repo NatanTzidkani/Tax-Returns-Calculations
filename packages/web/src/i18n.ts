@@ -38,6 +38,7 @@ export const resources = {
         columnStatus: 'סטטוס',
         columnDeadline: 'מועד הגשה',
         columnRefund: 'החזר משוער',
+        columnActions: 'פעולות',
         addYearTitle: 'הוספת שנת מס',
         addYearLabel: 'שנה',
         addYearSubmit: 'הוספה',
@@ -258,6 +259,19 @@ export const resources = {
           totalLiability: 'סך חבות המס',
           refund: 'החזר מס (שלילי = יתרה לתשלום)',
         },
+      },
+      // --- Delete a tax year (DELETE /tax-years/:id) with confirmation -----
+      deleteTaxYear: {
+        trigger: 'מחיקת שנת מס',
+        // Accessible label + tooltip for the icon-only per-row control on the
+        // dashboard (rendered as a trash-can button, no visible text).
+        rowTriggerAria: 'מחיקת שנת מס {{year}}',
+        dialogTitle: 'מחיקת שנת מס',
+        dialogBody:
+          'האם אתה בטוח שברצונך למחוק את שנת המס {{year}}? כל המסמכים והחישובים יימחקו לצמיתות. פעולה זו בלתי הפיכה.',
+        cancel: 'ביטול',
+        confirm: 'מחיקה',
+        error: 'מחיקת שנת המס נכשלה',
       },
     },
   },
