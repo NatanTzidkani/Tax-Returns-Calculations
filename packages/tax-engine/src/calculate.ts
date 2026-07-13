@@ -115,8 +115,9 @@ export function calculate(input: TaxYearInput): TaxReturnResult {
   // total liability and refund are computed by the Tax Authority in
   // assessment (the form has only a surtax-threshold checkbox and refund
   // bank-account fields 277/278). Every key is always present; values are 0
-  // when the year has no such item. Whole-shekel rounding (÷100) happens in
-  // the filing view, not here.
+  // when the year has no such item. All values stay integer agorot — the
+  // filing view formats them for display (formatILS); the whole-shekel
+  // rounding the paper form expects is left to the human transcriber.
   const form1301Fields: Record<string, Agorot> = {
     '158': workIncome, // הכנסת עבודה ממשכורת/שכר עבודה (טופסי 106)
     // מס הכנסה שנוכה במקור ממשכורת בלבד (טופסי 106) — deliberately excludes
