@@ -13,18 +13,23 @@ for but NOT built now.
 - Design spec (approved): `docs/superpowers/specs/2026-07-03-tax-returns-app-design.md`
 - Completed foundation plan (example of our plan format): `docs/superpowers/plans/2026-07-03-foundation.md`
 
-## Current state (auth + document pipeline + UI foundations, 2026-07-06)
+## Current state (Plan 5 filing & lifecycle complete, 2026-07-13)
 
-All green (root `pnpm test`: shared 29, tax-engine 82, api 60, web 31 — clean
-typecheck; engine gated at ≥95% branch coverage):
+All green (root `pnpm test`: shared 42, tax-engine 83, api 92, web 55 — clean
+typecheck; engine branch coverage 98.82%, ≥95% gate). The calculation loop is
+closed end-to-end: confirmed data → `calculate()` → append-only snapshot →
+worksheet panel + Form 1301 filing view → year status flow. Note: the api
+integration suite needs the compose `db` container up (it has no restart
+policy — consider adding `restart: unless-stopped`; if it's down every
+`pipeline.test.ts` run fails at DB setup).
 
 | Package | What exists |
 |---|---|
 | `packages/shared` | Branded `Agorot` money module; `Form106Schema`/`Form867Schema`/`CharityReceiptSchema` (Zod, `documentSchemas` map); `AuthUserSchema` |
-| `packages/api` | Fastify 5, `buildApp(deps?)` with injectable `db`/`storage`/`anthropic`/`googleVerifier`; Drizzle schema, all 7 tables migrated; **Google Sign-In**: `POST /auth/google` (ID-token verify via `google-auth-library`, single-owner-email allowlist), `GET /auth/me`, `POST /auth/logout`, `@fastify/secure-session` cookie, global fail-closed auth-gate `preHandler` (only `GET /health` and `POST /auth/google` are public) — see `docs/superpowers/plans/2026-07-06-google-sign-in.md`; document pipeline: `Storage`/`LocalDiskStorage`, multipart upload, Claude-vision extraction (`ExtractionClient` injectable), `pending→extracted→confirmed|failed`, manual-entry fallback — see `docs/superpowers/plans/2026-07-04-document-pipeline.md` |
-| `packages/web` | React 18 + Vite, Hebrew RTL, Tailwind v4 (logical properties only) + Radix + TanStack Router/Query; Dashboard (year list, Hebrew status chips, add-year capped at the current calendar year), tax-year detail (documents panel with upload + per-row review link), and **document review** (`/tax-years/$id/documents/$id`: file viewer w/ zoom, kind-specific forms, uncertain-field highlighting, extract/manual-entry/confirm) screens, styled; **Google Sign-In**: `/sign-in` screen (`@react-oauth/google`), `useAuth()` hook, router `beforeLoad` guard, header sign-out — see `docs/superpowers/plans/2026-07-06-google-sign-in.md` |
+| `packages/api` | Fastify 5, `buildApp(deps?)` with injectable `db`/`storage`/`anthropic`/`googleVerifier`; Drizzle schema, all 7 tables migrated; **Google Sign-In**: `POST /auth/google` (ID-token verify via `google-auth-library`, single-owner-email allowlist), `GET /auth/me`, `POST /auth/logout`, `@fastify/secure-session` cookie, global fail-closed auth-gate `preHandler` (only `GET /health` and `POST /auth/google` are public) — see `docs/superpowers/plans/2026-07-06-google-sign-in.md`; document pipeline: `Storage`/`LocalDiskStorage`, multipart upload, Claude-vision extraction (`ExtractionClient` injectable), `pending→extracted→confirmed|failed`, manual-entry fallback — see `docs/superpowers/plans/2026-07-04-document-pipeline.md`; **Plan 5 filing/lifecycle**: `POST /tax-years/:id/calculate` (maps confirmed data → engine, append-only `calculations` snapshot stamped `ENGINE_VERSION`, engine errors → 400 Hebrew, `metadata.excludedDonations`), `GET /tax-years/:id/calculation` (+`stale`), `PATCH /tax-years/:id/status` (server-enforced legal-transition map, `filedAt` on filing), `refundEstimateAgorot` in `GET /tax-years`; loss carry-forward across years — unique `(user_id, from_year, kind)` (migration `0001`) + `onConflictDoUpdate` so concurrent recalcs can't duplicate, IN-sum filtered to `kind='capital'` |
+| `packages/web` | React 18 + Vite, Hebrew RTL, Tailwind v4 (logical properties only) + Radix + TanStack Router/Query; Dashboard (year list, Hebrew status chips, add-year capped at the current calendar year), tax-year detail (documents panel with upload + per-row review link), and **document review** (`/tax-years/$id/documents/$id`: file viewer w/ zoom, kind-specific forms, uncertain-field highlighting, extract/manual-entry/confirm) screens, styled; **Google Sign-In**: `/sign-in` screen (`@react-oauth/google`), `useAuth()` hook, router `beforeLoad` guard, header sign-out — see `docs/superpowers/plans/2026-07-06-google-sign-in.md`; **Plan 5**: calculation **worksheet panel** in the tax-year detail (taxpayer form → `POST /calculate`, full auditable breakdown — brackets, credit points, pension/charity credits, capital-gains offsets + carry-forward, surtax, totals, refund/owed headline, stale + carry-forward notices, audit stamp; validity owned by shared `CalculateRequestSchema`, form `noValidate` so the Hebrew error isn't swallowed by native input constraints), **Form 1301 filing view** (`/tax-years/$id/filing`: `form1301Fields` transcription table rendered generically with owner-verification warning + status-flow controls offering only legal transitions) |
 | `infra/` | `docker-compose.yml`: db (postgres:17) + api (:3000) + web (:5173); web's Vite proxy targets `http://api:3000` via `VITE_API_PROXY_TARGET` (Compose service-name DNS) |
-| `packages/tax-engine` | Pure TS engine (`calculate(input) → TaxReturnResult`, `ENGINE_VERSION`): IL 2024+2025 year data, **all constants owner-verified 2026-07-05** (`docs/superpowers/research/2026-07-05-tax-constants-verification.md` — zero corrections needed), modules for income-tax brackets, credit points, charity §46, capital gains w/ loss offset + carry-forward, pension §45א, surtax incl. 2025 2% capital add-on, informational NI reconciliation; `form1301Fields` map (official 1301 codes still owner-verified in Plan 5) |
+| `packages/tax-engine` | Pure TS engine (`calculate(input) → TaxReturnResult`, `ENGINE_VERSION`): IL 2024+2025 year data, **all constants owner-verified 2026-07-05** (`docs/superpowers/research/2026-07-05-tax-constants-verification.md` — zero corrections needed), modules for income-tax brackets, credit points, charity §46, capital gains w/ loss offset + carry-forward, pension §45א, surtax incl. 2025 2% capital add-on, informational NI reconciliation; `form1301Fields` map — **official codes owner-verified 2026-07-13** (`docs/superpowers/research/2026-07-12-form1301-codes-verification.md`): 158/042/045 confirmed, donations → 037 (RAW amount), securities withholding → 040, loss carry-forward out → 166; surtax/liability/refund are code-less named worksheet outputs (no main-form field). `ENGINE_VERSION` = `il-0.2.0` |
 
 **⚠️ Auth changes phase-1 scope.** The design spec (§1) originally listed
 authentication as out of scope for phase 1 ("single-user, running locally,
@@ -58,9 +63,17 @@ Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §
    blank/overflow money guards (reviewer-agent findings, all fixed).
 4. **Google Sign-In** DONE 2026-07-06 (see current-state table) — not a
    numbered spec plan, added mid-stream on owner request.
-5. **Plan 5 — filing & lifecycle** (next): Form 1301 field-map view; year
-   status flow draft→in_review→ready_to_file→filed→amended; loss
-   carry-forward across years; backup script (pg_dump + documents tar).
+5. ~~**Plan 5 — filing & lifecycle**~~ DONE 2026-07-13
+   (`docs/superpowers/plans/2026-07-07-calculation-and-filing.md`): calculate
+   endpoint + append-only snapshots, worksheet panel, Form 1301 filing view,
+   year status flow draft→in_review→ready_to_file→filed→amended, loss
+   carry-forward across years (unique-constrained + upsert to survive
+   concurrent recalcs), backup script. **Form 1301 field codes owner-verified**
+   against the official 2024/2025 forms
+   (`docs/superpowers/research/2026-07-12-form1301-codes-verification.md`):
+   donations → field 037 (RAW amount; Authority applies §46 rate/ceilings),
+   securities withholding → 040 (042 salary-only), loss carry-forward out →
+   166; ENGINE_VERSION → il-0.2.0.
 
 ## Non-negotiable conventions
 

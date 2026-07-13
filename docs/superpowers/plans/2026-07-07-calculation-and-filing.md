@@ -124,14 +124,47 @@ is money-critical), then full root suite + typecheck, CLAUDE.md update.
 
 ## Task split
 
-- [ ] **backend-dev** (worktree): shared schemas, tax-engine dep, mapping
+- [x] **backend-dev** (worktree): shared schemas, tax-engine dep, mapping
       module (TDD — unit tests for the mapper incl. missing boxes → 0,
       §46-unapproved exclusion), the four endpoints + integration tests on
       the existing real-Postgres pattern (calculate happy path incl.
       snapshot append-only on recalc, carry-forward in/out across two years,
       stale flag flips when a doc is re-confirmed, status transition matrix
-      incl. filedAt, refund estimate in GET /tax-years), commit.
-- [ ] **frontend-dev** (worktree): worksheet panel, filing view, status
+      incl. filedAt, refund estimate in GET /tax-years), commit. DONE.
+- [x] **frontend-dev** (worktree): worksheet panel, filing view, status
       controls, dashboard verification, i18n keys, component tests, commit.
-- [ ] **orchestrator**: backup script + README; merge both branches;
+      DONE (two parallel worktrees, hand-merged; Dashboard already rendered
+      refundEstimateAgorot null-safely so no change was needed there).
+- [x] **orchestrator**: backup script + README; merge branches;
       **reviewer** agent on the diff; fix findings; full suite; CLAUDE.md.
+      DONE.
+
+## Outcome (2026-07-13)
+
+All Plan 5 scope landed and green (root `pnpm test`: shared 42, tax-engine
+83, api 92, web 55 = 272; typecheck clean; engine branch coverage 98.82% ≥
+95% gate). Notable decisions and fixes beyond the original contract:
+
+- **Form 1301 codes owner-verified** against the official 2024/2025 forms +
+  da-2024 guide (`docs/superpowers/research/2026-07-12-form1301-codes-verification.md`).
+  Corrections applied to the engine map: donations now emit official field
+  **037** as the RAW donated amount (the assessing system applies the §46
+  rate/ceilings — do NOT pre-apply); securities withholding moved to **040**
+  (**042** stays salary-only); unoffset capital losses carry out on **166**.
+  `capitalTaxableGain`/`capitalTax`/`surtax`/`totalLiability`/`refund` stay
+  code-less named worksheet outputs (confirmed to have no main-form field —
+  securities detail lives on נספח ג/טופס 1322; surtax/liability/refund are
+  computed by the Authority in assessment). ENGINE_VERSION → `il-0.2.0`.
+- **Carry-forward hardening** (reviewer findings): unique
+  `(user_id, from_year, kind)` constraint (migration `0001`) + `onConflictDoUpdate`
+  so a concurrent double-submit of /calculate can't duplicate a loss row and
+  double-count it into later years; carry-forward-IN sum now filters
+  `kind='capital'`.
+- **Worksheet form `noValidate`**: native number-input step/min constraint
+  validation was silently blocking submit for step-invalid credit-point
+  entries before the localized Hebrew Zod error could show — the shared
+  `CalculateRequestSchema` now solely owns validity.
+- Baseline flake root-caused: the host Docker daemon had restarted and left
+  the compose `db`/`api`/`web` containers exited (no restart policy) — not a
+  code regression. **Recommend** adding `restart: unless-stopped` to the
+  compose `db` service so a host reboot doesn't silently take the stack down.
