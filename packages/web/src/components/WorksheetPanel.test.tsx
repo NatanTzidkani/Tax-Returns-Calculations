@@ -344,4 +344,33 @@ describe('WorksheetPanel', () => {
       ),
     ).toBeTruthy();
   });
+
+  it('renders the 15% non-linked-interest audit section only when there is such income', async () => {
+    // Default fixture has zero non-linked interest → section hidden.
+    vi.mocked(getCalculation).mockResolvedValue(makeCalculation());
+    await renderApp('/tax-years/ty-2024');
+    await screen.findByText('10%');
+    expect(
+      screen.queryByText((c) => normalize(c).includes('הכנסת ריבית (שדה 078)')),
+    ).toBeNull();
+
+    // Non-zero interest → section renders the income/tax/withholding lines.
+    const calculation = makeCalculation();
+    calculation.result.nonLinkedInterest = {
+      reason: 'nonLinkedInterest',
+      amountAgorot: a(1_000_000),
+      rateBp: 1500,
+      taxAgorot: a(150_000),
+      withheldAgorot: a(100_000),
+    };
+    vi.mocked(getCalculation).mockResolvedValue(calculation);
+    await renderApp('/tax-years/ty-2024');
+    await screen.findByText('10%');
+    expect(
+      screen.getByText((c) => normalize(c).includes('הכנסת ריבית (שדה 078)')),
+    ).toBeTruthy();
+    expect(
+      screen.getByText((c) => normalize(c).includes('ניכוי במקור (שדה 043)')),
+    ).toBeTruthy();
+  });
 });

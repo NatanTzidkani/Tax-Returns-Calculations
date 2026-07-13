@@ -435,6 +435,26 @@ function Worksheet({
         </dl>
       </WorksheetSection>
 
+      {(result.nonLinkedInterest.amountAgorot > 0 ||
+        result.nonLinkedInterest.withheldAgorot > 0) && (
+        <WorksheetSection title={t('worksheet.nonLinkedInterest')}>
+          <dl className="mt-2">
+            <MoneyRow
+              label={t('worksheet.nonLinkedInterestAmount')}
+              value={result.nonLinkedInterest.amountAgorot}
+            />
+            <MoneyRow
+              label={t('worksheet.nonLinkedInterestTax')}
+              value={result.nonLinkedInterest.taxAgorot}
+            />
+            <MoneyRow
+              label={t('worksheet.nonLinkedInterestWithheld')}
+              value={result.nonLinkedInterest.withheldAgorot}
+            />
+          </dl>
+        </WorksheetSection>
+      )}
+
       <WorksheetSection title={t('worksheet.surtaxTitle')}>
         <dl className="mt-2">
           <MoneyRow

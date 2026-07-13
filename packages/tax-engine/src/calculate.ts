@@ -54,6 +54,10 @@ function validate(input: TaxYearInput): void {
     assertMoney(e.taxWithheldAgorot, `capital.entries[${i}].taxWithheldAgorot`);
   });
   assertMoney(input.capital.lossCarryforwardInAgorot, 'capital.lossCarryforwardInAgorot');
+  if (input.nonLinkedInterest !== undefined) {
+    assertMoney(input.nonLinkedInterest.amountAgorot, 'nonLinkedInterest.amountAgorot');
+    assertMoney(input.nonLinkedInterest.taxWithheldAgorot, 'nonLinkedInterest.taxWithheldAgorot');
+  }
 }
 
 /**

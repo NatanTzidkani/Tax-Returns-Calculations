@@ -203,6 +203,9 @@ export const resources = {
         // audit-worksheet breakdown reason. See
         // docs/superpowers/research/2026-07-13-non-linked-interest-15pct.md.
         nonLinkedInterest: 'ריבית על נכס שאינו צמוד מדד (15%)',
+        nonLinkedInterestAmount: 'הכנסת ריבית (שדה 078)',
+        nonLinkedInterestTax: 'מס (15%)',
+        nonLinkedInterestWithheld: 'ניכוי במקור (שדה 043)',
         surtaxTitle: 'מס יסף',
         surtaxThreshold: 'סף החיוב',
         surtaxBase: 'בסיס החיוב',
