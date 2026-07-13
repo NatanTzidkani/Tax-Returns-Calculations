@@ -1100,3 +1100,222 @@ describe('GET /tax-years refund estimates', () => {
     expect(byYear.get(2023)).toBeNull(); // year exists, never calculated
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-user isolation: every tax-year-scoped read/write must be limited to
+// the requester's own years. A second user + year is created directly in the
+// DB (sign-in is single-owner-only) and must be invisible/untouchable to the
+// authenticated owner. These blocks run last so the extra user row doesn't
+// perturb earlier single-user assumptions.
+// ---------------------------------------------------------------------------
+
+describe('cross-user isolation', () => {
+  let intruderYearId: string;
+
+  beforeAll(async () => {
+    const [other] = await db
+      .insert(schema.users)
+      .values({ email: 'intruder@example.com' })
+      .returning();
+    const [year] = await db
+      .insert(schema.taxYears)
+      .values({ userId: other!.id, year: 2025 })
+      .returning();
+    intruderYearId = year!.id;
+  });
+
+  it('GET /tax-years never lists another user’s years', async () => {
+    const res = await authedInject({ method: 'GET', url: '/tax-years' });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().map((t: { id: string }) => t.id);
+    expect(ids).not.toContain(intruderYearId);
+  });
+
+  it('404s (Hebrew) on every tax-year-scoped route for another user’s year', async () => {
+    const attempts: InjectOptions[] = [
+      { method: 'GET', url: `/tax-years/${intruderYearId}/documents` },
+      {
+        method: 'POST',
+        url: `/tax-years/${intruderYearId}/calculate`,
+        payload: taxpayerBody,
+      },
+      { method: 'GET', url: `/tax-years/${intruderYearId}/calculation` },
+      {
+        method: 'PATCH',
+        url: `/tax-years/${intruderYearId}/status`,
+        payload: { status: 'in_review' },
+      },
+      { method: 'DELETE', url: `/tax-years/${intruderYearId}` },
+    ];
+    for (const opts of attempts) {
+      const res = await authedInject(opts);
+      expect(res.statusCode, `${opts.method} ${opts.url}`).toBe(404);
+      expect(res.json().message).toMatch(/[֐-׿]/);
+    }
+  });
+
+  it('does NOT upload documents into another user’s year', async () => {
+    const { payload, headers } = multipartBody({ kind: 'form106' }, pdfFile);
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${intruderYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('leaves the other user’s year fully intact after the blocked attempts', async () => {
+    const [row] = await db
+      .select()
+      .from(schema.taxYears)
+      .where(eq(schema.taxYears.id, intruderYearId));
+    expect(row).toBeDefined();
+    expect(row!.status).toBe('draft');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /tax-years/:id — cascade-delete the year and everything under it.
+// ---------------------------------------------------------------------------
+
+describe('DELETE /tax-years/:id', () => {
+  async function ownerUserId(): Promise<string> {
+    const [owner] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, OWNER_EMAIL));
+    return owner!.id;
+  }
+
+  it('cascade-deletes the year, all child rows, and the stored files (204)', async () => {
+    // A fresh year with the full spread of children. Engine year-support is
+    // irrelevant here, so calculation/carry-forward rows are inserted directly
+    // rather than via the calculate route (2022 has no rule set).
+    const create = await authedInject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2022 },
+    });
+    expect(create.statusCode).toBe(201);
+    const yearId = create.json().id;
+    const userId = await ownerUserId();
+
+    const doc = await uploadDocument(app, yearId, 'form106');
+    // extracted_fields (audit) + confirmed_data (approved) for the document.
+    await db
+      .insert(schema.extractedFields)
+      .values({ documentId: doc.id, payload: form106Wire, model: EXTRACTION_MODEL });
+    const confirm = await authedInject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: { payload: confirmedForm106 },
+    });
+    expect(confirm.statusCode).toBe(200);
+
+    // calculation snapshot + loss carry-forward row, inserted directly.
+    await db.insert(schema.calculations).values({
+      taxYearId: yearId,
+      engineVersion: ENGINE_VERSION,
+      input: {},
+      result: {},
+    });
+    await db.insert(schema.lossCarryforward).values({
+      userId,
+      fromYear: 2022,
+      amountAgorot: 1_234_500,
+      kind: 'capital',
+    });
+
+    const [docRow] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, doc.id));
+    const storageKey = docRow!.storageKey;
+    // The file exists before the delete.
+    await expect(storage.get(storageKey)).resolves.toBeInstanceOf(Buffer);
+
+    const del = await authedInject({ method: 'DELETE', url: `/tax-years/${yearId}` });
+    expect(del.statusCode).toBe(204);
+
+    // Every child row is gone.
+    expect(
+      await db
+        .select()
+        .from(schema.calculations)
+        .where(eq(schema.calculations.taxYearId, yearId)),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(schema.documents).where(eq(schema.documents.taxYearId, yearId)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.confirmedData)
+        .where(eq(schema.confirmedData.documentId, doc.id)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.extractedFields)
+        .where(eq(schema.extractedFields.documentId, doc.id)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(schema.lossCarryforward)
+        .where(
+          and(
+            eq(schema.lossCarryforward.userId, userId),
+            eq(schema.lossCarryforward.fromYear, 2022),
+          ),
+        ),
+    ).toHaveLength(0);
+    // The tax_years row itself is gone.
+    expect(
+      await db.select().from(schema.taxYears).where(eq(schema.taxYears.id, yearId)),
+    ).toHaveLength(0);
+    // The stored blob is deleted.
+    await expect(storage.get(storageKey)).rejects.toThrow();
+
+    // And it no longer appears in the listing.
+    const list = await authedInject({ method: 'GET', url: '/tax-years' });
+    expect(list.json().map((t: { year: number }) => t.year)).not.toContain(2022);
+  });
+
+  it('404s (Hebrew) for a non-UUID id — never a 500', async () => {
+    const res = await authedInject({ method: 'DELETE', url: '/tax-years/not-a-uuid' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('404s (Hebrew) for an unknown UUID', async () => {
+    const res = await authedInject({ method: 'DELETE', url: `/tax-years/${randomUUID()}` });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+  });
+
+  it('tolerates an already-missing stored file (still 204, rows gone)', async () => {
+    const create = await authedInject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2021 },
+    });
+    expect(create.statusCode).toBe(201);
+    const yearId = create.json().id;
+    const doc = await uploadDocument(app, yearId, 'form106');
+
+    const [docRow] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, doc.id));
+    // Simulate a blob that vanished out-of-band.
+    await storage.delete(docRow!.storageKey);
+
+    const del = await authedInject({ method: 'DELETE', url: `/tax-years/${yearId}` });
+    expect(del.statusCode).toBe(204);
+    expect(
+      await db.select().from(schema.documents).where(eq(schema.documents.taxYearId, yearId)),
+    ).toHaveLength(0);
+  });
+});

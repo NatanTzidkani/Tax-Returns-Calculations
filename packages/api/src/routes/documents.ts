@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { documentSchemas, type ExtractableDocumentKind } from '@taxreturns/shared';
-import { desc, eq } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import { and, desc, eq } from 'drizzle-orm';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ResolvedDeps } from '../app';
+import { requireUserId } from '../auth/session';
 import { confirmedData, documents, extractedFields, taxYears } from '../db/schema';
 import { ExtractionFailedError, extractDocument } from '../extraction/extractor';
 
@@ -63,26 +64,32 @@ export async function documentRoutes(
 ): Promise<void> {
   const { deps } = opts;
 
-  async function loadDocument(rawId: string) {
+  /** Loads a document only if its tax year belongs to the requester. */
+  async function loadDocument(rawId: string, req: FastifyRequest) {
     const parsed = uuid.safeParse(rawId);
     if (!parsed.success) return undefined;
-    const [doc] = await deps.db
+    const [row] = await deps.db
       .select()
       .from(documents)
-      .where(eq(documents.id, parsed.data));
-    return doc;
+      .innerJoin(taxYears, eq(documents.taxYearId, taxYears.id))
+      .where(and(eq(documents.id, parsed.data), eq(taxYears.userId, requireUserId(req))));
+    return row?.documents;
+  }
+
+  /** Loads a tax year only if it belongs to the requester — otherwise 404. */
+  async function loadOwnedTaxYear(rawId: string, req: FastifyRequest) {
+    const parsed = uuid.safeParse(rawId);
+    if (!parsed.success) return undefined;
+    const [row] = await deps.db
+      .select()
+      .from(taxYears)
+      .where(and(eq(taxYears.id, parsed.data), eq(taxYears.userId, requireUserId(req))));
+    return row;
   }
 
   app.get('/tax-years/:taxYearId/documents', async (req, reply) => {
     const { taxYearId: rawId } = req.params as { taxYearId: string };
-    const idParsed = uuid.safeParse(rawId);
-    if (!idParsed.success) {
-      return reply.code(404).send({ message: MSG.taxYearNotFound });
-    }
-    const [taxYear] = await deps.db
-      .select()
-      .from(taxYears)
-      .where(eq(taxYears.id, idParsed.data));
+    const taxYear = await loadOwnedTaxYear(rawId, req);
     if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
 
     return deps.db
@@ -94,14 +101,7 @@ export async function documentRoutes(
 
   app.post('/tax-years/:taxYearId/documents', async (req, reply) => {
     const { taxYearId: rawId } = req.params as { taxYearId: string };
-    const idParsed = uuid.safeParse(rawId);
-    if (!idParsed.success) {
-      return reply.code(404).send({ message: MSG.taxYearNotFound });
-    }
-    const [taxYear] = await deps.db
-      .select()
-      .from(taxYears)
-      .where(eq(taxYears.id, idParsed.data));
+    const taxYear = await loadOwnedTaxYear(rawId, req);
     if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
 
     if (!req.isMultipart()) {
@@ -138,7 +138,7 @@ export async function documentRoutes(
   });
 
   app.post('/documents/:id/extract', async (req, reply) => {
-    const doc = await loadDocument((req.params as { id: string }).id);
+    const doc = await loadDocument((req.params as { id: string }).id, req);
     if (!doc) return reply.code(404).send({ message: MSG.documentNotFound });
     if (!isExtractable(doc.kind)) {
       return reply.code(400).send({ message: MSG.extractOther });
@@ -176,7 +176,7 @@ export async function documentRoutes(
   });
 
   app.post('/documents/:id/confirm', async (req, reply) => {
-    const doc = await loadDocument((req.params as { id: string }).id);
+    const doc = await loadDocument((req.params as { id: string }).id, req);
     if (!doc) return reply.code(404).send({ message: MSG.documentNotFound });
     if (!isExtractable(doc.kind)) {
       return reply.code(400).send({ message: MSG.confirmOther });
@@ -212,7 +212,7 @@ export async function documentRoutes(
   });
 
   app.get('/documents/:id/file', async (req, reply) => {
-    const doc = await loadDocument((req.params as { id: string }).id);
+    const doc = await loadDocument((req.params as { id: string }).id, req);
     if (!doc) return reply.code(404).send({ message: MSG.documentNotFound });
 
     const data = await deps.storage.get(doc.storageKey);
@@ -226,7 +226,7 @@ export async function documentRoutes(
   });
 
   app.get('/documents/:id', async (req, reply) => {
-    const doc = await loadDocument((req.params as { id: string }).id);
+    const doc = await loadDocument((req.params as { id: string }).id, req);
     if (!doc) return reply.code(404).send({ message: MSG.documentNotFound });
 
     const [extracted] = await deps.db

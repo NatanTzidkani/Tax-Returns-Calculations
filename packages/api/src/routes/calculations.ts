@@ -10,9 +10,10 @@ import {
   type TaxReturnResult,
 } from '@taxreturns/tax-engine';
 import { and, desc, eq, gt, isNull, lt } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ResolvedDeps } from '../app';
+import { requireUserId } from '../auth/session';
 import {
   mapConfirmedData,
   type ConfirmedDocumentInput,
@@ -64,13 +65,14 @@ export async function calculationRoutes(
 ): Promise<void> {
   const { deps } = opts;
 
-  async function loadTaxYear(rawId: string) {
+  /** Loads the year only if it belongs to the requester — otherwise 404. */
+  async function loadTaxYear(rawId: string, req: FastifyRequest) {
     const parsed = uuid.safeParse(rawId);
     if (!parsed.success) return undefined;
     const [row] = await deps.db
       .select()
       .from(taxYears)
-      .where(eq(taxYears.id, parsed.data));
+      .where(and(eq(taxYears.id, parsed.data), eq(taxYears.userId, requireUserId(req))));
     return row;
   }
 
@@ -98,7 +100,7 @@ export async function calculationRoutes(
   }
 
   app.post('/tax-years/:id/calculate', async (req, reply) => {
-    const taxYear = await loadTaxYear((req.params as { id: string }).id);
+    const taxYear = await loadTaxYear((req.params as { id: string }).id, req);
     if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
 
     const parsed = CalculateRequestSchema.safeParse(req.body);
@@ -197,7 +199,7 @@ export async function calculationRoutes(
   });
 
   app.get('/tax-years/:id/calculation', async (req, reply) => {
-    const taxYear = await loadTaxYear((req.params as { id: string }).id);
+    const taxYear = await loadTaxYear((req.params as { id: string }).id, req);
     if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
 
     const [latest] = await deps.db
@@ -226,7 +228,7 @@ export async function calculationRoutes(
   });
 
   app.patch('/tax-years/:id/status', async (req, reply) => {
-    const taxYear = await loadTaxYear((req.params as { id: string }).id);
+    const taxYear = await loadTaxYear((req.params as { id: string }).id, req);
     if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
 
     const parsed = TaxYearStatusUpdateSchema.safeParse(req.body);
