@@ -1,4 +1,20 @@
-import type { AuthUser, CharityReceipt, Form106, Form867 } from '@taxreturns/shared';
+import type {
+  AuthUser,
+  CalculateRequestSchema,
+  CharityReceipt,
+  Form106,
+  Form867,
+  TaxYearStatusUpdate,
+} from '@taxreturns/shared';
+import type { TaxReturnResult, TaxYearInput } from '@taxreturns/tax-engine';
+import type { z } from 'zod';
+
+/**
+ * Wire body of POST /tax-years/:id/calculate — the schema's INPUT side
+ * (isIsraeliResident/additionalCreditPoints optional; the server applies the
+ * shared defaults). The schema stays the single source of truth.
+ */
+export type CalculateRequestBody = z.input<typeof CalculateRequestSchema>;
 
 /**
  * Typed fetch client for the TaxReturns API.
@@ -59,10 +75,33 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * API errors are Hebrew `{ message }` JSON bodies (see packages/api); pull the
+ * message out so the UI can show it verbatim. Falls back to the raw body text
+ * for anything that isn't that shape (proxy errors, plain-text 500s…).
+ */
+async function errorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'message' in parsed &&
+      typeof (parsed as { message: unknown }).message === 'string'
+    ) {
+      return (parsed as { message: string }).message;
+    }
+  } catch {
+    // Not JSON — fall through to the raw text.
+  }
+  return text;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, { credentials: 'same-origin', ...init });
   if (!response.ok) {
-    throw new ApiError(response.status, await response.text());
+    throw new ApiError(response.status, await errorMessage(response));
   }
   if (response.status === 204) {
     return undefined as T;
@@ -144,4 +183,79 @@ export async function getMe(): Promise<AuthUser | null> {
 
 export function signOut(): Promise<void> {
   return request<void>('/auth/logout', { method: 'POST' });
+}
+
+// --- Plan 5: calculation snapshots + year status flow ------------------------
+
+/**
+ * One append-only `calculations` row as `GET /tax-years/:id/calculation`
+ * returns it (plus the computed `stale` flag). `input`/`result` are the
+ * engine's own types from `@taxreturns/tax-engine` — never redefined here.
+ */
+export interface CalculationSnapshot {
+  id: string;
+  taxYearId: string;
+  engineVersion: string;
+  input: TaxYearInput;
+  result: TaxReturnResult;
+  /** ISO timestamp */
+  createdAt: string;
+  /** True when a document was re-confirmed after this snapshot was taken. */
+  stale: boolean;
+}
+
+/**
+ * `POST /tax-years/:id/calculate` response — a fresh snapshot plus mapping
+ * metadata (how many §46-unapproved receipts were excluded from the engine
+ * input). The POST body validates against the shared `CalculateRequestSchema`.
+ */
+export interface CalculateResponse {
+  id: string;
+  taxYearId: string;
+  engineVersion: string;
+  input: TaxYearInput;
+  result: TaxReturnResult;
+  /** ISO timestamp */
+  createdAt: string;
+  metadata: { excludedDonations: number };
+}
+
+export function calculateTaxYear(
+  taxYearId: string,
+  body: CalculateRequestBody,
+): Promise<CalculateResponse> {
+  return request<CalculateResponse>(
+    `/tax-years/${taxYearId}/calculate`,
+    jsonInit('POST', body),
+  );
+}
+
+/**
+ * Latest calculation for the year, or `null` when there is none yet (the
+ * API's 404 is the expected "no calculation" state, mirroring `getMe`).
+ */
+export async function getCalculation(
+  taxYearId: string,
+): Promise<CalculationSnapshot | null> {
+  try {
+    return await request<CalculationSnapshot>(`/tax-years/${taxYearId}/calculation`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * `PATCH /tax-years/:id/status`. Illegal transitions come back as a 400 with
+ * a Hebrew message (surfaced via ApiError); the UI should only offer legal
+ * next steps to begin with.
+ */
+export function updateTaxYearStatus(
+  taxYearId: string,
+  status: TaxYearStatus,
+): Promise<TaxYear> {
+  const body: TaxYearStatusUpdate = { status };
+  return request<TaxYear>(`/tax-years/${taxYearId}/status`, jsonInit('PATCH', body));
 }

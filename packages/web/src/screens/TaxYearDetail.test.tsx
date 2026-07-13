@@ -2,7 +2,13 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaxDocument, TaxYear } from '../api/client';
-import { getMe, listDocuments, listTaxYears, uploadDocument } from '../api/client';
+import {
+  getCalculation,
+  getMe,
+  listDocuments,
+  listTaxYears,
+  uploadDocument,
+} from '../api/client';
 import { renderApp } from '../test/render';
 
 vi.mock('../api/client');
@@ -34,6 +40,7 @@ beforeEach(() => {
   vi.mocked(listTaxYears).mockReset().mockResolvedValue([taxYear]);
   vi.mocked(listDocuments).mockReset().mockResolvedValue(documents);
   vi.mocked(uploadDocument).mockReset();
+  vi.mocked(getCalculation).mockReset().mockResolvedValue(null);
   vi.mocked(getMe)
     .mockReset()
     .mockResolvedValue({ id: 'u1', email: 'owner@example.com' });
@@ -98,5 +105,12 @@ describe('TaxYearDetail', () => {
       () => expect(uploadDocument).toHaveBeenCalledWith('ty-2024', file, 'form867'),
       { timeout: 10_000 },
     );
+  });
+
+  it('links to the Form 1301 filing view from the header', async () => {
+    await renderApp('/tax-years/ty-2024');
+
+    const filingLink = await screen.findByRole('link', { name: 'טופס 1301 והגשה' });
+    expect(filingLink.getAttribute('href')).toBe('/tax-years/ty-2024/filing');
   });
 });

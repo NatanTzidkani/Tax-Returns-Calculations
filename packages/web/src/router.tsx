@@ -14,6 +14,7 @@ import { getMe, signOut } from './api/client';
 import { authQueryKey, useAuth } from './auth/useAuth';
 import { Dashboard } from './screens/Dashboard';
 import { DocumentReview } from './screens/DocumentReview';
+import { Filing } from './screens/Filing';
 import { SignIn } from './screens/SignIn';
 import { TaxYearDetail } from './screens/TaxYearDetail';
 
@@ -115,6 +116,13 @@ const documentReviewRoute = createRoute({
   beforeLoad: requireAuth,
 });
 
+const filingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/tax-years/$taxYearId/filing',
+  component: Filing,
+  beforeLoad: requireAuth,
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
@@ -125,6 +133,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   taxYearDetailRoute,
   documentReviewRoute,
+  filingRoute,
   signInRoute,
 ]);
 

@@ -10,6 +10,7 @@ import {
   uploadDocument,
 } from '../api/client';
 import { ExtractionStatusChip } from '../components/StatusChip';
+import { WorksheetPanel } from '../components/WorksheetPanel';
 
 const route = getRouteApi('/tax-years/$taxYearId');
 
@@ -220,6 +221,16 @@ export function TaxYearDetail() {
           ? t('taxYearDetail.title', { year: taxYear.year })
           : t('taxYearDetail.titleUnknown')}
       </h1>
+      {/* Plan 5: Form 1301 filing view + year status flow. */}
+      <p className="mt-2 text-sm">
+        <Link
+          to="/tax-years/$taxYearId/filing"
+          params={{ taxYearId }}
+          className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          {t('filing.linkFromDetail')}
+        </Link>
+      </p>
       <div className="mt-6 flex flex-col gap-4">
         <DocumentsPanel taxYearId={taxYearId} />
         <PlaceholderPanel
@@ -227,11 +238,7 @@ export function TaxYearDetail() {
           titleKey="taxYearDetail.dataPanel"
           bodyKey="taxYearDetail.dataPlaceholder"
         />
-        <PlaceholderPanel
-          id="calculation-panel-title"
-          titleKey="taxYearDetail.calculationPanel"
-          bodyKey="taxYearDetail.calculationPlaceholder"
-        />
+        <WorksheetPanel taxYearId={taxYearId} />
       </div>
     </main>
   );
