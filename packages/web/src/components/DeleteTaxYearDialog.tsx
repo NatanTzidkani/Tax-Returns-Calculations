@@ -18,9 +18,13 @@ type Variant = 'header' | 'row';
 const overlayClasses =
   'fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in';
 
+// Center via a flex wrapper (positioningClasses) rather than a logical inset +
+// physical transform, which don't compose under RTL and push the dialog
+// off-center. The wrapper holds the fixed positioning; Content is a flow child.
+const positioningClasses = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+
 const contentClasses =
-  'fixed top-1/2 start-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 ' +
-  'rounded-lg border border-neutral-200 bg-white p-6 shadow-xl ' +
+  'w-full max-w-md rounded-lg border border-neutral-200 bg-white p-6 shadow-xl ' +
   'dark:border-neutral-800 dark:bg-neutral-900';
 
 const titleClasses = 'text-lg font-semibold text-neutral-900 dark:text-neutral-100';
@@ -135,7 +139,8 @@ export function DeleteTaxYearDialog({
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className={overlayClasses} />
-        <AlertDialog.Content className={contentClasses}>
+        <div className={positioningClasses}>
+          <AlertDialog.Content className={contentClasses}>
           <AlertDialog.Title className={titleClasses}>
             {t('deleteTaxYear.dialogTitle')}
           </AlertDialog.Title>
@@ -163,7 +168,8 @@ export function DeleteTaxYearDialog({
               {t('deleteTaxYear.confirm')}
             </button>
           </div>
-        </AlertDialog.Content>
+          </AlertDialog.Content>
+        </div>
       </AlertDialog.Portal>
     </AlertDialog.Root>
   );
