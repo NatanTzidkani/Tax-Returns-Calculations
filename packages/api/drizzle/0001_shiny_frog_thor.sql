@@ -1,0 +1,1 @@
+ALTER TABLE "loss_carryforward" ADD CONSTRAINT "loss_carryforward_user_id_from_year_kind_unique" UNIQUE("user_id","from_year","kind");

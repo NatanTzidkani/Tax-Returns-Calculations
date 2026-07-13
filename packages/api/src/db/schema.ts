@@ -89,12 +89,21 @@ export const calculations = pgTable('calculations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const lossCarryforward = pgTable('loss_carryforward', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id),
-  fromYear: integer('from_year').notNull(),
-  /** integer agorot; bigint because losses can exceed int4 range */
-  amountAgorot: bigint('amount_agorot', { mode: 'number' }).notNull(),
-  kind: text('kind').notNull(),
-  consumedByYear: integer('consumed_by_year'),
-});
+export const lossCarryforward = pgTable(
+  'loss_carryforward',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    fromYear: integer('from_year').notNull(),
+    /** integer agorot; bigint because losses can exceed int4 range */
+    amountAgorot: bigint('amount_agorot', { mode: 'number' }).notNull(),
+    kind: text('kind').notNull(),
+    consumedByYear: integer('consumed_by_year'),
+  },
+  // At most one open carry-forward row per (user, source year, kind). The
+  // calculate route replaces this year's row on every recalculation; the
+  // constraint is what makes that safe under a concurrent double-submit —
+  // two racing recalcs converge to one row (onConflictDoUpdate) instead of
+  // duplicating a loss that would then be double-counted into later years.
+  (t) => [unique().on(t.userId, t.fromYear, t.kind)],
+);

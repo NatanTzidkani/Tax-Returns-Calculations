@@ -114,6 +114,7 @@ export async function calculationRoutes(
       .where(
         and(
           eq(lossCarryforward.userId, taxYear.userId),
+          eq(lossCarryforward.kind, 'capital'),
           lt(lossCarryforward.fromYear, taxYear.year),
           isNull(lossCarryforward.consumedByYear),
         ),
@@ -166,12 +167,28 @@ export async function calculationRoutes(
           ),
         );
       if (result.lossCarryforwardOutAgorot > 0) {
-        await tx.insert(lossCarryforward).values({
-          userId: taxYear.userId,
-          fromYear: taxYear.year,
-          amountAgorot: result.lossCarryforwardOutAgorot,
-          kind: 'capital',
-        });
+        // Upsert (not plain insert): a concurrent recalculation of the same
+        // year may have deleted-nothing then inserted first, so collide onto
+        // the unique (userId, fromYear, kind) row instead of duplicating it.
+        await tx
+          .insert(lossCarryforward)
+          .values({
+            userId: taxYear.userId,
+            fromYear: taxYear.year,
+            amountAgorot: result.lossCarryforwardOutAgorot,
+            kind: 'capital',
+          })
+          .onConflictDoUpdate({
+            target: [
+              lossCarryforward.userId,
+              lossCarryforward.fromYear,
+              lossCarryforward.kind,
+            ],
+            set: {
+              amountAgorot: result.lossCarryforwardOutAgorot,
+              consumedByYear: null,
+            },
+          });
       }
       return inserted;
     });

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENGINE_VERSION } from '@taxreturns/tax-engine';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
@@ -878,6 +878,53 @@ describe('loss carry-forward across years', () => {
       .select()
       .from(schema.lossCarryforward)
       .where(eq(schema.lossCarryforward.fromYear, 2024));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amountAgorot).toBe(5_000_000);
+  });
+
+  it('does NOT sum non-capital carry-forward kinds into the capital loss IN', async () => {
+    // Defense-in-depth: `kind` is free text; a future charity carry-forward
+    // row for an earlier year must never leak into the CAPITAL loss offset.
+    const [user] = await db.select().from(schema.users);
+    await db.insert(schema.lossCarryforward).values({
+      userId: user!.id,
+      fromYear: 2024,
+      amountAgorot: 77_700,
+      kind: 'charity',
+    });
+
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/calculate`,
+      payload: taxpayerBody,
+    });
+    expect(res.statusCode).toBe(200);
+    // Only the 5,000,000 capital loss from 2024 — not the 77,700 charity row.
+    expect(res.json().input.capital.lossCarryforwardInAgorot).toBe(5_000_000);
+  });
+
+  it('the database rejects a second (user, fromYear, kind) row outright', async () => {
+    // The race guarantee: even if two concurrent recalculations both saw an
+    // empty delete, the unique index makes a duplicate insert impossible.
+    const [user] = await db.select().from(schema.users);
+    await expect(
+      db.insert(schema.lossCarryforward).values({
+        userId: user!.id,
+        fromYear: 2024,
+        amountAgorot: 1,
+        kind: 'capital',
+      }),
+    ).rejects.toThrow();
+
+    const rows = await db
+      .select()
+      .from(schema.lossCarryforward)
+      .where(
+        and(
+          eq(schema.lossCarryforward.fromYear, 2024),
+          eq(schema.lossCarryforward.kind, 'capital'),
+        ),
+      );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amountAgorot).toBe(5_000_000);
   });
