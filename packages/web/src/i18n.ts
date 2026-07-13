@@ -197,6 +197,12 @@ export const resources = {
         capitalTax: 'מס רווח הון',
         capitalWithheld: 'מס שנוכה בשוק ההון',
         capitalCarryOut: 'הפסד מועבר לשנים הבאות',
+        // 15% non-linked deposit/savings interest (§125ג(ג); Form 1301 field
+        // 078, withholding 043) — a separate bucket from the securities 25%
+        // interest/dividend above. Keyed by the engine's 'nonLinkedInterest'
+        // audit-worksheet breakdown reason. See
+        // docs/superpowers/research/2026-07-13-non-linked-interest-15pct.md.
+        nonLinkedInterest: 'ריבית על נכס שאינו צמוד מדד (15%)',
         surtaxTitle: 'מס יסף',
         surtaxThreshold: 'סף החיוב',
         surtaxBase: 'בסיס החיוב',
@@ -249,6 +255,10 @@ export const resources = {
           '045': 'תגמולי עובד לקופת גמל',
           '037': 'תרומות למוסדות ציבור בישראל (סעיף 46)',
           '040': 'סה"כ הסכומים שנוכו במקור מהכנסות אחרות הכלולות בדוח',
+          // Non-linked-interest 15% branch (Form 1301 part ה item 21 / part טו
+          // item 82) — see docs/superpowers/research/2026-07-13-non-linked-interest-15pct.md.
+          '078': 'ריבית על פקדונות ותוכניות חיסכון — מס בשיעור של 15%',
+          '043': 'ניכוי במקור מריבית (פקדונות ותוכניות חיסכון)',
           '166': 'הפסדי הון שלא קוזזו (ללא חו"ל)',
           // Legacy engine keys (pre code-verification) — kept so an older
           // calculation snapshot still renders with a meaningful label.

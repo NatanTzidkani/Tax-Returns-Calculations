@@ -85,6 +85,13 @@ function makeResult(overrides: Partial<TaxReturnResult> = {}): TaxReturnResult {
       withheldAgorot: a(250_000),
       lossCarryforwardOutAgorot: a(0),
     },
+    nonLinkedInterest: {
+      reason: 'nonLinkedInterest',
+      amountAgorot: a(0),
+      rateBp: 1500,
+      taxAgorot: a(0),
+      withheldAgorot: a(0),
+    },
     surtax: {
       thresholdAgorot: a(72_000_000),
       baseAgorot: a(0),
