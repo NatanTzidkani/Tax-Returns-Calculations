@@ -136,14 +136,52 @@ describe('calculate — golden scenarios', () => {
     expect(res.surtax.capitalAdditionalSurtaxAgorot).toBe(0);
   });
 
-  it('exposes a form 1301 field map', () => {
+  it('exposes a form 1301 field map with verified official codes', () => {
+    // Codes verified 2026-07-12:
+    // docs/superpowers/research/2026-07-12-form1301-codes-verification.md
+    const res = calculate(
+      baseInput({
+        salaries: [salary(120_000, 12_000, 7_200)],
+        donations: [{ institutionName: 'עמותה', amountAgorot: sh(1_000) }],
+        capital: {
+          entries: [
+            {
+              brokerName: 'ברוקר',
+              realGainAgorot: sh(1_000),
+              realLossAgorot: sh(5_000),
+              interestDividendAgorot: sh(0),
+              taxWithheldAgorot: sh(250),
+            },
+          ],
+          lossCarryforwardInAgorot: sh(0),
+        },
+      }),
+    );
+    expect(res.form1301Fields['158']).toBe(sh(120_000));
+    // 042 is salary (Form 106) withholding ONLY — securities withholding
+    // deliberately excluded (it goes to 040).
+    expect(res.form1301Fields['042']).toBe(sh(12_000));
+    expect(res.form1301Fields['045']).toBe(sh(7_200));
+    // 037 takes the raw amount donated in the tax year; the Tax Authority
+    // applies the §46 35% rate and ceilings itself.
+    expect(res.form1301Fields['037']).toBe(sh(1_000));
+    expect(res.form1301Fields['037']).toBe(res.charity.totalDonationsAgorot);
+    expect(res.form1301Fields).not.toHaveProperty('donationsEligible');
+    // 040 — withholding on securities (Form 867), not 043 (deposit interest).
+    expect(res.form1301Fields['040']).toBe(sh(250));
+    // 166 — capital losses not offset, carried to future years.
+    expect(res.form1301Fields['166']).toBe(sh(4_000));
+    expect(res.form1301Fields['166']).toBe(res.lossCarryforwardOutAgorot);
+    expect(res.form1301Fields['refund']).toBe(res.refundAgorot);
+  });
+
+  it('form 1301 map keys are always present, zero-valued without input', () => {
     const res = calculate(
       baseInput({ salaries: [salary(120_000, 12_000, 7_200)] }),
     );
-    expect(res.form1301Fields['158']).toBe(sh(120_000));
-    expect(res.form1301Fields['042']).toBe(sh(12_000));
-    expect(res.form1301Fields['045']).toBe(sh(7_200));
-    expect(res.form1301Fields['refund']).toBe(res.refundAgorot);
+    expect(res.form1301Fields['037']).toBe(0);
+    expect(res.form1301Fields['040']).toBe(0);
+    expect(res.form1301Fields['166']).toBe(0);
   });
 });
 

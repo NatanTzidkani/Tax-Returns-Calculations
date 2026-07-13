@@ -11,8 +11,11 @@ import { reconcileNationalInsurance } from './jurisdictions/il/modules/national-
 import { computePensionCredit } from './jurisdictions/il/modules/pension';
 import { computeSurtax } from './jurisdictions/il/modules/surtax';
 
-/** Bump on ANY rule or year-data change; stamped into calculations rows. */
-export const ENGINE_VERSION = 'il-0.1.0';
+/** Bump on ANY rule or year-data change; stamped into calculations rows.
+ * 0.2.0: form1301Fields corrected to owner-verified official codes
+ * (037/040/166 added, donationsEligible removed) — the map is part of the
+ * persisted result. */
+export const ENGINE_VERSION = 'il-0.2.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
@@ -98,14 +101,37 @@ export function calculate(input: TaxYearInput): TaxReturnResult {
     ...input.salaries.map((s) => s.pensionEmployeeContributionAgorot),
   );
 
-  // Numeric keys mirror the shared Form 106 box codes that map 1:1 onto the
-  // printed Form 1301 fields; named keys are engine outputs whose official
-  // 1301 codes the owner verifies in Plan 5's filing view.
+  // Form 1301 field map. Numeric keys are OFFICIAL field codes, verified
+  // 2026-07-12 against the 2024 and 2025 forms (codes identical both years)
+  // and the Tax Authority's filling guide — full audit trail with per-field
+  // sources in docs/superpowers/research/2026-07-12-form1301-codes-verification.md:
+  //   • טופס 1301 לשנת 2024 (רשות המסים): https://www.gov.il/BlobFolder/service/reporting-and-payment-2024-annual-tax-report-for-individuals/he/Service_Pages_Income_tax_annual-report-2024_1301-2024.pdf
+  //   • טופס 1301 לשנת 2025 (רשות המסים): https://www.gov.il/BlobFolder/service/reporting-and-payment-2025-annual-tax-report-for-individuals/he/Service_Pages_Income_tax_annual-report-2026_itc1301-2025.pdf
+  //   • דע זכויותיך וחובותיך 2024 — מדריך מילוי הדוח: https://www.gov.il/BlobFolder/generalpage/income-tax-guide-knowyourright/he/Guides_IncomeTax_da-2024.pdf
+  // '158'/'042'/'045' were CONFIRMED as-is by that report. Named keys are
+  // engine worksheet outputs verified to have NO main-form 1301 field:
+  // securities gain/tax detail is itemised on נספח ג (טופס 1322) — the main
+  // form carries only proceeds/count fields 054/056/256 — and surtax (§121ב),
+  // total liability and refund are computed by the Tax Authority in
+  // assessment (the form has only a surtax-threshold checkbox and refund
+  // bank-account fields 277/278). Every key is always present; values are 0
+  // when the year has no such item. Whole-shekel rounding (÷100) happens in
+  // the filing view, not here.
   const form1301Fields: Record<string, Agorot> = {
-    '158': workIncome, // הכנסת עבודה
-    '042': addAgorot(...input.salaries.map((s) => s.taxWithheldAgorot)), // מס שנוכה
-    '045': pensionContributions, // תשלומי עובד לקופת גמל
-    donationsEligible: charity.eligibleAgorot,
+    '158': workIncome, // הכנסת עבודה ממשכורת/שכר עבודה (טופסי 106)
+    // מס הכנסה שנוכה במקור ממשכורת בלבד (טופסי 106) — deliberately excludes
+    // securities withholding, which belongs in 040 (da-2024 סעיפים 81, 83).
+    '042': addAgorot(...input.salaries.map((s) => s.taxWithheldAgorot)),
+    '045': pensionContributions, // תשלומים לקופת גמל לקצבה כ"עמית שכיר"
+    // תרומות למוסדות ציבור בישראל — the RAW amount donated in the tax year;
+    // the assessing system applies the §46 35% rate and ceilings itself
+    // (da-2024 p. 68: "המחשב יחשב את הזיכוי המגיע בהתאם לרשום בשדות אלה").
+    '037': charity.totalDonationsAgorot,
+    // ניכוי במקור מהכנסות אחרות "לרבות במכירת ניירות ערך סחירים" (טופסי 867,
+    // da-2024 סעיף 83) — NOT 043, which is deposit/savings interest only.
+    '040': capitalGains.withheldAgorot,
+    // הפסדי הון שלא קוזזו המועברים לשנים הבאות (ללא חו"ל), חלק יא סעיף 45ג.
+    '166': capitalGains.lossCarryforwardOutAgorot,
     capitalTaxableGain: capitalGains.taxableGainAgorot,
     capitalTax: capitalGains.taxAgorot,
     surtax: surtax.totalAgorot,
