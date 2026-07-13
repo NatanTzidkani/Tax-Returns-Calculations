@@ -1,10 +1,13 @@
 # §47 Pension Deductions (ניכויים) — Implementation Plan (DEFERRABLE)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Do not start coding before the "Owner must verify before merge" checklist is signed off — the rate constants this plan needs are not in any gov.il primary source.**
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Do not start coding before the "Owner must verify before merge" checklist is signed off.** _Update 2026-07-13: the rate constants are now primary-source **CONFIRMED** in `2026-07-13-section47-rates-addendum.md` (פקודת מס הכנסה read verbatim). The remaining gates in §5 are the scope call, the surtax/§45א ordering question, and input extractability — no longer the rates._
 
-**Status:** DEFERRED / not scheduled. This plan is written and reviewable, but
-must not be implemented until (a) the owner verifies the flagged rates below and
-(b) a real return actually needs a §47 deduction. See §0 "Why deferrable".
+**Status:** DEFERRED / not scheduled. This plan is written and reviewable. The
+rate constants are now primary-source **CONFIRMED** (see the rates addendum,
+referenced below); it must not be implemented until (a) the owner makes the
+scope call that a real return actually needs a §47 deduction, and (b) the
+residual §5 items (surtax/§45א ordering, input extractability) are settled. See
+§0 "Why deferrable".
 
 **Goal:** Add the §47 pension **deduction** (ניכוי) to the tax engine — the
 relief that reduces *taxable income before the brackets* — as a first-class,
@@ -14,9 +17,19 @@ computes after the brackets. Also cover the self-employed קרן-השתלמות 
 
 **Source of truth for every constant and every open question:**
 `docs/superpowers/research/2026-07-13-section47-deductions.md` (the approved
-research report — READ IT FIRST). This plan does not restate the source URLs;
-they live in that report and must be copied into the engine's `// source:`
-comments verbatim when the values are entered.
+research report — READ IT FIRST for the ceilings and open questions). This plan
+does not restate the source URLs; they live in that report and must be copied
+into the engine's `// source:` comments verbatim when the values are entered.
+
+**Rate constants — primary source:**
+`docs/superpowers/research/2026-07-13-section47-rates-addendum.md` reached
+פקודת מס הכנסה [נוסח חדש] itself (§§45א, 46, 47, 47א, 17(5א) read verbatim) and
+**CONFIRMED every rate** the base report could only source from industry tables,
+plus **corrected two section labels** and **resolved both ambiguities**. Where a
+line below still reads `TODO(owner-verify)` for a *rate*, that is superseded —
+use the addendum's confirmed value + section, with the addendum URL in the
+`// source:` comment. (Corrections carried in: the 11% deduction is §47(**ב1**)(1),
+not §47(ב); 232,800 ₪ is the §45א **credit** base, not the §47 deduction base.)
 
 ---
 
@@ -133,26 +146,36 @@ New result type `PensionDeductionResult` in `core/types.ts` and its wiring into
 
 ### 2.4 Year data — new `section47` block in `years/2024.ts` (inherited by 2025)
 
-Add alongside the existing `pension45a` block in `IlYearData`. **Only the
-CONFIRMED ceilings from the report get real values; every RATE stays
-`TODO(owner-verify)`** (report §4.2):
+Add alongside the existing `pension45a` block in `IlYearData`. Ceilings are
+CONFIRMED from the primary booklet (report §2); **rates are now CONFIRMED from
+the primary ordinance** (rates addendum) — enter both with real `// source:`
+comments (the addendum URL for rates, the report URLs for ceilings):
 
 ```
 section47: {
   // CONFIRMED against primary booklet (report §2), agorot = annual ×100:
-  workIncomeMezakaCeilingAgorot:      agorot(11_640_000), // §47(א)(1)(1) 116,400
-  nonWorkIncomeMezakaCeilingAgorot:   agorot(16_440_000), // §47(א)(1)(2) 164,400
-  atzmaiCeilingAgorot:                agorot(11_640_000), // §47(א) 116,400
-  additionalIncomeCeilingMonthlyAgorot: agorot(2_425_000), // §47(א)(5) 24,250/mo
-  motavThresholdAnnualAgorot:         agorot(2_406_900),  // §47(א)(7) 24,069
-  kerenHishtalmutIncomeCeilingAgorot: agorot(29_339_700), // §17(5א) 293,397
-  // NEEDS-OWNER-VERIFICATION — NOT in any gov.il source (report §3):
-  deductionRateBp:              /* TODO(owner-verify) 1100 = 11% §47(ב) */,
-  motavDeductionBaseAgorot:     /* TODO(owner-verify) 164,400 vs 232,800 — §3.1 */,
-  complementaryCreditRateBp:    /* TODO(owner-verify) 550 = 5.5% §45א */,
-  kerenHishtalmutRateBp:        /* TODO(owner-verify) 450 = 4.5% §17(5א) */,
-  additionalDeductionBp:        /* TODO(owner-verify) §47(ב1) — UNRESOLVED, §3.2 */,
+  workIncomeMezakaCeilingAgorot:        agorot(11_640_000), // §47(א)(1)(1) 116,400 — the עמית-עצמאי 11% base
+  nonWorkIncomeMezakaCeilingAgorot:     agorot(16_440_000), // §47(א)(1)(2) 164,400 (NOT the deduction base — see note)
+  atzmaiCeilingAgorot:                  agorot(11_640_000), // §47(א)(3) 116,400
+  additionalIncomeCeilingMonthlyAgorot: agorot(2_425_000),  // §47(א)(5) 24,250/mo (291,000/yr = 2.5× work ceiling)
+  motavThresholdAnnualAgorot:           agorot(2_406_900),  // §47(א)(7) 24,069
+  kerenHishtalmutIncomeCeilingAgorot:   agorot(29_339_700), // §17(5א) 293,397
+  // RATES — now CONFIRMED (primary) in 2026-07-13-section47-rates-addendum.md;
+  // copy that URL + section into each // source: comment when entering them:
+  deductionRateBp:                 1100, // 11%  §47(ב1)(1)  [NOT §47(ב)] — addendum §1
+  additionalIncomeDeductionRateBp: 700,  // 7%   §47(ב1)(2) base rate      — addendum §1
+  additionalDeductionBp:           400,  // +4%  §47(ב1)(2) "ניכוי נוסף" on portion >12% — addendum §5
+  complementaryCreditRateBp:       550,  // 5.5% = 5% §45א(ה)(2)(ב)(1) + 0.5% §45א(ו) — addendum §4
+  kerenHishtalmutRateBp:           450,  // 4.5% §17(5א)                  — addendum §6
+  pensionCreditRateBp:             3500, // 35%  §45א(ב) (already engine pension45a) — addendum §4.1
 }
+// Deduction BASE — ambiguity RESOLVED (addendum §1, §8): the §47(ב1) deduction
+// does NOT use one 232,800 ₪ ceiling. It stacks TWO 116,400 work-income
+// ceilings — 11%×116,400 (§47(ב1)(1)) + up to 11%×116,400 (§47(ב1)(2) on הכנסה
+// נוספת) = the 25,608 ₪ cap. 232,800 (=2×116,400) is the §45א CREDIT base
+// (§45א(ה)(2)(ב)(1)), not a §47 deduction base; 164,400 (§47(א)(1)(2)) is the
+// non-work-income branch. So there is no `motavDeductionBaseAgorot` field —
+// the base is `workIncomeMezakaCeilingAgorot` applied twice.
 ```
 
 2025 inherits via the `...il2024` spread — **but note (report freeze section):**
@@ -182,9 +205,11 @@ Each step: failing test → run it → implement → pass → commit (convention
 `feat(tax-engine): ...`). Root `pnpm test` + `pnpm typecheck` green before each
 commit. **Do not begin until §5 is signed off.**
 
-- [ ] **Step 0 — owner-verify gate.** Confirm the §5 checklist is resolved and
-      the rate constants are entered with real `// source:` comments. If any
-      rate is still UNRESOLVED, stop — do not code a placeholder rate.
+- [ ] **Step 0 — owner-verify gate.** The *rates* are now primary-confirmed
+      (rates addendum) — enter them with the addendum's `// source:` comments.
+      Confirm the residual §5 items instead: the **scope call** (does §47 fire
+      for the actual return) and the **surtax/§45א pre-vs-post-§47 ordering**
+      (§2.2). If the ordering is still unsettled, stop before Step 7.
 - [ ] **Step 1 — year data (CONFIRMED ceilings only).** Add the `section47`
       block to `IlYearData` (types) and `years/2024.ts` with the CONFIRMED
       ceilings and real source comments; rates left as owner-verified values
@@ -211,8 +236,11 @@ commit. **Do not begin until §5 is signed off.**
       per §5. Test end-to-end: a self-employed fixture's bracket tax drops by
       deduction × marginal rate; refund recomputed. Bump `ENGINE_VERSION`
       (il-0.3.0). Commit.
-- [ ] **Step 8 — §47(ב1) "ניכוי נוסף".** Only if §5 resolved it. Otherwise leave
-      a typed "not modelled" note and a test asserting it's absent. Commit.
+- [ ] **Step 8 — §47(ב1) "ניכוי נוסף".** RESOLVED (rates addendum §5): it is the
+      **+4% deduction** (§47(ב1)(2)) on the portion of contributions exceeding
+      12% of הכנסה נוספת, on top of the 7% base — implement it, no longer a stub.
+      (The unrelated 0.5% is a §45א(ו) *credit*, handled in the credit path, not
+      here.) Commit.
 - [ ] **Step 9 — worksheet + mapper + shared schema** (frontend/backend), if the
       new inputs are wired to real documents. Commit.
 
@@ -228,42 +256,53 @@ mis-taxes every return). Full root suite + typecheck; engine branch coverage
 
 ## 5. ⚠️ OWNER MUST VERIFY BEFORE MERGE
 
-**None of these can be coded from the research report alone — they are not in any
-gov.il primary source.** Matan must confirm each against the ordinance text
-(פקודת מס הכנסה §47(ב)/(ב1), §45א(ד), §17(5א), §121ב) before the corresponding
-TDD step runs. Do NOT hard-code a placeholder rate.
+**Update 2026-07-13 — the RATES are now primary-source CONFIRMED** in
+`docs/superpowers/research/2026-07-13-section47-rates-addendum.md` (פקודת מס
+הכנסה read verbatim). The "verify the rate" items are therefore **closed**
+(struck through below). What remains for Matan is a **scope call**, one open
+**ordering** question, per-year **ceiling** re-verification, and **input
+extractability**. Still: do NOT hard-code a placeholder — copy the addendum's
+confirmed value + section into each `// source:` comment.
 
-- [ ] **§47(ב) deduction RATE = 11% → cap 25,608 ₪** (report §3.1). Not in
-      booklet; from licensed-firm tables only. Confirm 11% and the cap.
-- [ ] **§47(ב) deduction BASE ambiguity: 164,400 ₪ vs 232,800 ₪** (report §3.1).
-      The booklet's §47(א)(1)(2) "לא מהכנסת עבודה" ceiling is 164,400 (→11% =
-      18,084); industry tables use 232,800 (= §45א(ה)(2) ×12 → 11% = 25,608).
-      **Which ceiling governs the §47(ב) deduction base must be settled from the
-      ordinance** — this changes the cap by ~7,500 ₪.
-- [ ] **§45א complementary credit RATE = 5.5% → 12,804 ₪ contribution**
-      (report §3.1). Confirm 5.5% and that it stacks to the 16.5% combined
-      ceiling.
-- [ ] **§17(5א) keren-hishtalmut RATE = 4.5% → 13,203 ₪** (report §2). Statutory
-      rate not printed in the booklet.
-- [ ] **§47(ב1) "ניכוי נוסף" mechanism — UNRESOLVED** (report §3.2). Sources give
-      TWO incompatible mechanisms: a 0.5% *credit* top-up (kolzchut/rashut) vs a
-      7% *deduction* on הכנסה שאינה מבוטחת (CPA corroboration). **Read §47(ב1)
-      directly; do not code either until reconciled.** Step 8 stays a stub until
-      then.
-- [ ] **Salaried "insured salary > 24,250 ₪/mo ⇒ no §47 deduction" gate**
-      (report §3.3). The ceiling itself is CONFIRMED; the *rule* wording is from
-      industry tables only — confirm the mechanic.
-- [ ] **Surtax base & §45א cap: pre- or post-§47 income?** (this plan §2.2). The
-      report doesn't settle whether `computeSurtax`'s base and
-      `computePensionCredit`'s 7%-of-qualifying-income cap use `workIncome`
-      (raw) or `taxableWorkIncome` (post-deduction). Confirm against §121ב and
-      §45א before Step 7.
-- [ ] **Is the input even extractable?** Confirm whether "insured salary" and
+**Closed by the rates addendum (no longer owner-verify):**
+
+- [x] ~~§47 deduction RATE 11% → cap 25,608 ₪~~ → **CONFIRMED** §47(**ב1**)(1)
+      (addendum §1). Note the corrected section: 11% is §47(ב1)(1), not §47(ב).
+- [x] ~~§47 deduction BASE ambiguity 164,400 vs 232,800~~ → **RESOLVED**
+      (addendum §1/§8): the deduction base is the **116,400 work ceiling stacked
+      twice** (= 25,608 cap); **232,800 is the §45א *credit* base**, and 164,400
+      is the non-work-income branch — neither is the §47 deduction base.
+- [x] ~~§45א complementary credit RATE 5.5%~~ → **CONFIRMED** = 5%
+      (§45א(ה)(2)(ב)(1)) + 0.5% (§45א(ו)) (addendum §4).
+- [x] ~~§17(5א) keren-hishtalmut RATE 4.5%~~ → **CONFIRMED** (addendum §6).
+- [x] ~~§47(ב1) "ניכוי נוסף" mechanism UNRESOLVED~~ → **RESOLVED** (addendum §5):
+      it is the **+4% deduction** (§47(ב1)(2)); the 7% is its base rate; the
+      0.5% is a separate §45א(ו) *credit*. Step 8 is implementable, not a stub.
+- [x] ~~Salaried insured-salary gate~~ → **CONFIRMED** mechanism (addendum §3):
+      built into §47(ב)(2)(ב) "בניכוי הכנסתו המבוטחת" up to 2.5× the work ceiling
+      (291,000/yr) — not a separate rule.
+
+**Still genuinely open (must be settled before the relevant TDD step):**
+
+- [ ] **Surtax base & §45א cap: pre- or post-§47 income?** (§2.2). The addendum
+      does NOT settle whether `computeSurtax`'s base and `computePensionCredit`'s
+      7%-of-qualifying-income cap use `workIncome` (raw) or `taxableWorkIncome`
+      (post-deduction). Confirm against §121ב and §45א **before Step 7**.
+- [ ] **Scope:** does any §47 / self-employed §17(5א) deduction fire for Matan's
+      actual return (single employer, fully-insured salary, no עמית-עצמאי fund)?
+      For that profile every deduction here is **0** (report §4) — if so, leave
+      deferred rather than build a module that never runs.
+- [ ] **Input extractability:** confirm whether "insured salary" and
       independent-contribution figures exist on Form 106 / the owner's documents
       before adding schema fields that can't be populated.
+- [ ] **Per-year indexed ₪ ceilings** (116,400 / 164,400 / 232,800 / 291,000 /
+      293,397) — re-verify each year; they track the average wage / §120ב, not
+      the now-confirmed rates.
 
-**CONFIRMED (safe to enter now, primary booklet, both years — report §2, §5):**
-§47(א)(1)(1) 116,400 ₪; §47(א)(1)(2) 164,400 ₪; §47(א) עמית עצמאי 116,400 ₪;
-§47(א)(5) 24,250 ₪/mo (291,000/yr); §47(א)(7) עמית מוטב threshold 24,069 ₪;
-§45א(ד)/(ה)(1) 2,268 ₪, §45א(ה)(2) 232,800 ₪; §17(5א) הכנסה קובעת 293,397 ₪.
-These are the ceilings only — every RATE applied to them is owner-verify.
+**CONFIRMED — safe to enter now (primary booklet ceilings §2 + primary ordinance
+rates, both years):** ceilings §47(א)(1)(1) 116,400 ₪; §47(א)(1)(2) 164,400 ₪;
+§47(א)(3) עמית עצמאי 116,400 ₪; §47(א)(5) 24,250 ₪/mo (291,000/yr); §47(א)(7)
+24,069 ₪; §45א(ה)(2) 232,800 ₪ (credit base); §17(5א) 293,397 ₪. **Rates**
+(addendum): 11% §47(ב1)(1), 7%+4% §47(ב1)(2), 5.5% §45א(ה)/(ו), 4.5% §17(5א),
+35% §45א(ב). The one non-constant still to settle before wiring is the
+pre-/post-§47 ordering above.
