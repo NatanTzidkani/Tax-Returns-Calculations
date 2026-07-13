@@ -6,3 +6,4 @@ data/
 *.tsbuildinfo
 .pnpm-store/
 backups/
+.claude/settings.local.json
