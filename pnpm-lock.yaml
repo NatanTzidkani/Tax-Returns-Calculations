@@ -106,6 +106,9 @@ importers:
       '@taxreturns/shared':
         specifier: workspace:*
         version: link:../shared
+      '@taxreturns/tax-engine':
+        specifier: workspace:*
+        version: link:../tax-engine
       i18next:
         specifier: ^24.0.0
         version: 24.2.3(typescript@5.9.3)
@@ -121,6 +124,9 @@ importers:
       react-i18next:
         specifier: ^15.0.0
         version: 15.7.4(i18next@24.2.3(typescript@5.9.3))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.2
