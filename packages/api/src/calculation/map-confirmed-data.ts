@@ -6,6 +6,7 @@ import {
 import type {
   BrokerEntryInput,
   DonationInput,
+  NonLinkedInterestInput,
   SalaryInput,
   TaxYearInput,
 } from '@taxreturns/tax-engine';
@@ -47,6 +48,19 @@ export function mapConfirmedData(opts: {
   documents: ConfirmedDocumentInput[];
   /** Sum of open loss_carryforward rows from earlier years, integer agorot. */
   lossCarryforwardInAgorot: number;
+  /**
+   * 15% non-linked deposit/savings interest (Form 1301 field 078) and its
+   * withholding (field 043). Both integer agorot.
+   *
+   * TODO(non-linked-interest source): there is NO confirmed-document source
+   * for this yet — Form 867 extraction only carries the securities
+   * interest/dividend aggregate, not the separate 15% non-linked-interest
+   * line/withholding. Until a dedicated extraction box exists these come
+   * per-request from the reviewer (CalculateRequestSchema); absent → the
+   * engine sees no such income (safe 0/no-op).
+   */
+  nonLinkedInterestAgorot?: number;
+  nonLinkedInterestWithheldAgorot?: number;
 }): MappedConfirmedData {
   const salaries: SalaryInput[] = [];
   const donations: DonationInput[] = [];
@@ -97,6 +111,19 @@ export function mapConfirmedData(opts: {
     }
   }
 
+  // Only attach the bucket when the reviewer actually supplied a value;
+  // otherwise leave it undefined so the engine sees no such income.
+  let nonLinkedInterest: NonLinkedInterestInput | undefined;
+  if (
+    opts.nonLinkedInterestAgorot !== undefined ||
+    opts.nonLinkedInterestWithheldAgorot !== undefined
+  ) {
+    nonLinkedInterest = {
+      amountAgorot: agorot(opts.nonLinkedInterestAgorot ?? 0),
+      taxWithheldAgorot: agorot(opts.nonLinkedInterestWithheldAgorot ?? 0),
+    };
+  }
+
   return {
     input: {
       year: opts.year,
@@ -107,6 +134,7 @@ export function mapConfirmedData(opts: {
         entries,
         lossCarryforwardInAgorot: agorot(opts.lossCarryforwardInAgorot),
       },
+      ...(nonLinkedInterest ? { nonLinkedInterest } : {}),
     },
     excludedDonations,
   };

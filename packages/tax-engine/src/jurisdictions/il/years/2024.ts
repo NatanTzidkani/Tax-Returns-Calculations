@@ -68,6 +68,12 @@ export const il2024: IlYearData = {
     // Real gains of an individual: 25%. source: פקודת מס הכנסה §91(ב)(1)
     // (owner-verify; assumes no §101A 30%+ substantial-shareholder cases).
     realGainRateBp: 2_500,
+    // Interest on a non-index-linked asset (deposits/savings): flat 15%.
+    // source: פקודת מס הכנסה §125ג(ג)(1); Form 1301 item 21 field 078
+    // ("ריבית על פקדונות ותוכניות חיסכון – מס בשיעור של 15%"). Fixed
+    // statutory percentage — identical in 2024 & 2025, no §120ב indexation.
+    // Verified in docs/superpowers/research/2026-07-13-non-linked-interest-15pct.md.
+    nonLinkedInterestRateBp: 1_500,
   },
 
   nationalInsurance: {

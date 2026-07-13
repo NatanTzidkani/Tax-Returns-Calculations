@@ -48,6 +48,40 @@ describe('CalculateRequestSchema', () => {
   it('rejects a missing taxpayer object', () => {
     expect(() => CalculateRequestSchema.parse({})).toThrow();
   });
+
+  it('accepts optional non-linked-interest fields (integer agorot)', () => {
+    const parsed = CalculateRequestSchema.parse({
+      taxpayer: { gender: 'male' },
+      nonLinkedInterestAgorot: 1_000_000,
+      nonLinkedInterestWithheldAgorot: 150_000,
+    });
+    expect(parsed.nonLinkedInterestAgorot).toBe(1_000_000);
+    expect(parsed.nonLinkedInterestWithheldAgorot).toBe(150_000);
+  });
+
+  it('leaves non-linked-interest fields undefined when omitted', () => {
+    const parsed = CalculateRequestSchema.parse({ taxpayer: { gender: 'male' } });
+    expect(parsed.nonLinkedInterestAgorot).toBeUndefined();
+    expect(parsed.nonLinkedInterestWithheldAgorot).toBeUndefined();
+  });
+
+  it('rejects a negative non-linked-interest amount', () => {
+    expect(() =>
+      CalculateRequestSchema.parse({
+        taxpayer: { gender: 'male' },
+        nonLinkedInterestAgorot: -1,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects a non-integer (fractional agorot) non-linked-interest amount', () => {
+    expect(() =>
+      CalculateRequestSchema.parse({
+        taxpayer: { gender: 'male' },
+        nonLinkedInterestAgorot: 100.5,
+      }),
+    ).toThrow();
+  });
 });
 
 describe('TaxYearStatusUpdateSchema', () => {

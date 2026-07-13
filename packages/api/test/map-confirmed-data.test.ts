@@ -133,6 +133,40 @@ describe('mapConfirmedData', () => {
     });
   });
 
+  it('maps supplied non-linked-interest fields into the engine input', () => {
+    const { input } = mapConfirmedData({
+      year: 2025,
+      taxpayer,
+      documents: [],
+      lossCarryforwardInAgorot: 0,
+      nonLinkedInterestAgorot: 1_000_000,
+      nonLinkedInterestWithheldAgorot: 150_000,
+    });
+    expect(input.nonLinkedInterest).toEqual({
+      amountAgorot: 1_000_000,
+      taxWithheldAgorot: 150_000,
+    });
+  });
+
+  it('defaults a missing non-linked-interest sub-field to 0 when the other is present', () => {
+    const { input } = mapConfirmedData({
+      year: 2025,
+      taxpayer,
+      documents: [],
+      lossCarryforwardInAgorot: 0,
+      nonLinkedInterestAgorot: 1_000_000,
+    });
+    expect(input.nonLinkedInterest).toEqual({
+      amountAgorot: 1_000_000,
+      taxWithheldAgorot: 0,
+    });
+  });
+
+  it('omits nonLinkedInterest entirely when neither field is supplied (safe no-op)', () => {
+    const { input } = map([]);
+    expect(input.nonLinkedInterest).toBeUndefined();
+  });
+
   it('throws when a confirmed payload does not match its schema (corrupt data fails loudly)', () => {
     expect(() =>
       map([{ kind: 'form106', payload: { nope: true } }]),

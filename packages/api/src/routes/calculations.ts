@@ -132,6 +132,10 @@ export async function calculationRoutes(
       taxpayer: parsed.data.taxpayer,
       documents: confirmed,
       lossCarryforwardInAgorot,
+      // 15% non-linked deposit interest — per-request until an extraction
+      // source exists (see mapConfirmedData TODO).
+      nonLinkedInterestAgorot: parsed.data.nonLinkedInterestAgorot,
+      nonLinkedInterestWithheldAgorot: parsed.data.nonLinkedInterestWithheldAgorot,
     });
 
     let result: TaxReturnResult;

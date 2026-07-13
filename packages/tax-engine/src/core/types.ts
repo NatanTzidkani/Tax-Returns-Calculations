@@ -48,6 +48,21 @@ export interface TaxpayerInput {
   additionalCreditPoints?: number;
 }
 
+/**
+ * Interest on a non-index-linked asset (ריבית על נכס שאינו צמוד למדד) — plain-
+ * shekel bank deposits and savings plans — taxed at a flat 15% (§125ג(ג)(1);
+ * Form 1301 item 21 field 078). Kept SEPARATE from BrokerEntryInput/securities:
+ * different rate (15% vs 25%), different Form 1301 fields (078/043 vs 157/040),
+ * and (owner-confirmed default) NOT a §92 loss-offset target — a deposit is not
+ * a נייר ערך. See docs/superpowers/research/2026-07-13-non-linked-interest-15pct.md.
+ */
+export interface NonLinkedInterestInput {
+  /** 15% deposit/savings interest income (Form 1301 field 078), ≥ 0 */
+  amountAgorot: Agorot;
+  /** Deposit-interest tax withheld at source (Form 1301 field 043), ≥ 0 */
+  taxWithheldAgorot: Agorot;
+}
+
 export interface TaxYearInput {
   year: number;
   taxpayer: TaxpayerInput;
@@ -58,6 +73,8 @@ export interface TaxYearInput {
     /** Unused real capital losses carried in from prior years, ≥ 0 */
     lossCarryforwardInAgorot: Agorot;
   };
+  /** 15% non-linked deposit/savings interest; absent → no such income. */
+  nonLinkedInterest?: NonLinkedInterestInput;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +157,17 @@ export interface SurtaxResult {
   totalAgorot: Agorot;
 }
 
+export interface NonLinkedInterestResult {
+  /** Worksheet breakdown reason (labels the audit line). */
+  reason: 'nonLinkedInterest';
+  amountAgorot: Agorot;
+  /** Flat rate applied (basis points): 1_500 = 15%. */
+  rateBp: number;
+  /** 15% of the interest amount (§125ג(ג)(1)). */
+  taxAgorot: Agorot;
+  withheldAgorot: Agorot;
+}
+
 export interface NationalInsuranceResult {
   informational: true;
   expectedEmployeeAgorot: Agorot;
@@ -159,6 +187,7 @@ export interface TaxReturnResult {
   creditsUnusedAgorot: Agorot;
   incomeTaxAfterCreditsAgorot: Agorot;
   capitalGains: CapitalGainsResult;
+  nonLinkedInterest: NonLinkedInterestResult;
   surtax: SurtaxResult;
   totalLiabilityAgorot: Agorot;
   totalWithheldAgorot: Agorot;
@@ -205,6 +234,13 @@ export interface IlYearData {
   };
   capitalGains: {
     realGainRateBp: number;
+    /**
+     * Flat rate on interest from a non-index-linked asset (bank deposits /
+     * savings plans): 1_500 = 15%. source: §125ג(ג)(1); Form 1301 item 21
+     * field 078; 15% in both 2024 & 2025 (fixed statutory percentage, no
+     * §120ב indexation, freeze-law-irrelevant).
+     */
+    nonLinkedInterestRateBp: number;
   };
   nationalInsurance: {
     employee: {

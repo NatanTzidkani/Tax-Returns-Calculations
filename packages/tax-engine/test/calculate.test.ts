@@ -182,6 +182,110 @@ describe('calculate — golden scenarios', () => {
     expect(res.form1301Fields['037']).toBe(0);
     expect(res.form1301Fields['040']).toBe(0);
     expect(res.form1301Fields['166']).toBe(0);
+    // 15% non-linked interest — zero when absent.
+    expect(res.form1301Fields['078']).toBe(0);
+    expect(res.form1301Fields['043']).toBe(0);
+    expect(res.nonLinkedInterest.amountAgorot).toBe(0);
+    expect(res.nonLinkedInterest.taxAgorot).toBe(0);
+  });
+});
+
+describe('calculate — 15% non-linked deposit interest (§125ג(ג)(1))', () => {
+  it('taxes deposit interest at a flat 15% into liability, withholding and refund', () => {
+    const res = calculate(
+      baseInput({
+        nonLinkedInterest: {
+          amountAgorot: sh(10_000),
+          taxWithheldAgorot: sh(1_500),
+        },
+      }),
+    );
+    // No salary/credits/brackets involved — the interest is its own flat line.
+    expect(res.nonLinkedInterest.rateBp).toBe(1_500);
+    expect(res.nonLinkedInterest.taxAgorot).toBe(sh(1_500));
+    expect(res.totalLiabilityAgorot).toBe(sh(1_500));
+    expect(res.totalWithheldAgorot).toBe(sh(1_500));
+    expect(res.refundAgorot).toBe(0);
+    // Official Form 1301 codes 078 (income) / 043 (withholding).
+    expect(res.form1301Fields['078']).toBe(sh(10_000));
+    expect(res.form1301Fields['043']).toBe(sh(1_500));
+  });
+
+  it('does NOT feed the salary bracket table (§125ג overrides §121)', () => {
+    const withInterest = calculate(
+      baseInput({
+        salaries: [salary(120_000, 12_000, 7_200)],
+        nonLinkedInterest: { amountAgorot: sh(50_000), taxWithheldAgorot: sh(0) },
+      }),
+    );
+    const withoutInterest = calculate(
+      baseInput({ salaries: [salary(120_000, 12_000, 7_200)] }),
+    );
+    // Bracket tax on work income is identical; the interest is taxed flat 15%
+    // on the side, never pushed through the marginal brackets.
+    expect(withInterest.incomeTax.totalAgorot).toBe(
+      withoutInterest.incomeTax.totalAgorot,
+    );
+    expect(withInterest.totalLiabilityAgorot).toBe(
+      withoutInterest.totalLiabilityAgorot + sh(50_000) * 0.15,
+    );
+  });
+
+  it('is a SEPARATE bucket — a capital loss does NOT offset deposit interest', () => {
+    // 5,000 ₪ current-year loss, 1,000 ₪ gain, plus 10,000 ₪ deposit interest.
+    const res = calculate(
+      baseInput({
+        capital: {
+          entries: [
+            {
+              brokerName: 'ברוקר',
+              realGainAgorot: sh(1_000),
+              realLossAgorot: sh(5_000),
+              interestDividendAgorot: sh(0),
+              taxWithheldAgorot: sh(0),
+            },
+          ],
+          lossCarryforwardInAgorot: sh(0),
+        },
+        nonLinkedInterest: { amountAgorot: sh(10_000), taxWithheldAgorot: sh(0) },
+      }),
+    );
+    // The loss stays entirely within the securities bucket and carries forward
+    // (4,000 ₪) — it does NOT absorb the 15% deposit interest.
+    expect(res.lossCarryforwardOutAgorot).toBe(sh(4_000));
+    expect(res.nonLinkedInterest.amountAgorot).toBe(sh(10_000));
+    expect(res.nonLinkedInterest.taxAgorot).toBe(sh(1_500));
+    // Full 15% is still owed on the deposit interest.
+    expect(res.totalLiabilityAgorot).toBe(sh(1_500));
+  });
+
+  it('2025: deposit interest is capital-source income for the 2% surtax add-on', () => {
+    // Push total taxable just past the 721,560 ₪ threshold using salary, then
+    // add deposit interest — it must land in the capital surtax base.
+    const withInterest = calculate(
+      baseInput({
+        salaries: [salary(700_000, 0)],
+        nonLinkedInterest: { amountAgorot: sh(100_000), taxWithheldAgorot: sh(0) },
+      }),
+    );
+    // total taxable 800,000 ₪; base above threshold 78,440 ₪; the capital part
+    // is min(100,000 interest, 78,440) = 78,440 → full 2% add-on applies.
+    expect(withInterest.surtax.baseAgorot).toBe(sh(78_440));
+    expect(withInterest.surtax.capitalBaseAgorot).toBe(sh(78_440));
+    expect(withInterest.surtax.capitalAdditionalSurtaxAgorot).toBe(sh(1_568.8));
+  });
+
+  it('2024: no 2% capital add-on on deposit interest (add-on is 2025+)', () => {
+    const res = calculate(
+      baseInput({
+        year: 2024,
+        salaries: [salary(700_000, 0)],
+        nonLinkedInterest: { amountAgorot: sh(100_000), taxWithheldAgorot: sh(0) },
+      }),
+    );
+    expect(res.surtax.capitalAdditionalSurtaxAgorot).toBe(0);
+    // Basic 3% surtax still applies on the whole band above the threshold.
+    expect(res.surtax.basicSurtaxAgorot).toBeGreaterThan(0);
   });
 });
 

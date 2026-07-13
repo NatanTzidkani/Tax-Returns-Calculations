@@ -8,14 +8,18 @@ import { computeCharityCredit } from './jurisdictions/il/modules/charity';
 import { computeCreditPoints } from './jurisdictions/il/modules/credit-points';
 import { computeIncomeTax } from './jurisdictions/il/modules/income-tax';
 import { reconcileNationalInsurance } from './jurisdictions/il/modules/national-insurance';
+import { computeNonLinkedInterest } from './jurisdictions/il/modules/non-linked-interest';
 import { computePensionCredit } from './jurisdictions/il/modules/pension';
 import { computeSurtax } from './jurisdictions/il/modules/surtax';
 
 /** Bump on ANY rule or year-data change; stamped into calculations rows.
  * 0.2.0: form1301Fields corrected to owner-verified official codes
  * (037/040/166 added, donationsEligible removed) — the map is part of the
- * persisted result. */
-export const ENGINE_VERSION = 'il-0.2.0';
+ * persisted result.
+ * 0.3.0: added the 15% non-linked-interest branch (§125ג(ג)(1)) — new
+ * `nonLinkedInterest` result section and Form 1301 fields 078/043; feeds
+ * totalLiability, the surtax capital base, and totalWithheld. */
+export const ENGINE_VERSION = 'il-0.3.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
@@ -65,10 +69,17 @@ export function calculate(input: TaxYearInput): TaxReturnResult {
   const workIncome = addAgorot(...input.salaries.map((s) => s.grossSalaryAgorot));
   const incomeTax = computeIncomeTax(workIncome, yearData);
   const capitalGains = computeCapitalGains(input.capital, yearData);
+  // 15% non-linked deposit/savings interest — a SEPARATE bucket from the
+  // securities interest/dividend in computeCapitalGains: different rate and
+  // (owner-confirmed default) NOT a §92 loss-offset target, so it is never
+  // routed through the loss-offset waterfall. See the research report.
+  const nonLinkedInterest = computeNonLinkedInterest(input.nonLinkedInterest, yearData);
 
   const capitalTaxable = addAgorot(
     capitalGains.taxableGainAgorot,
     capitalGains.taxableInterestDividendAgorot,
+    // Capital-source income for surtax (base 3% + 2025 2% capital add-on).
+    nonLinkedInterest.amountAgorot,
   );
   const totalTaxable = addAgorot(workIncome, capitalTaxable);
 
@@ -89,11 +100,13 @@ export function calculate(input: TaxYearInput): TaxReturnResult {
   const totalLiability = addAgorot(
     incomeTaxAfterCredits,
     capitalGains.taxAgorot,
+    nonLinkedInterest.taxAgorot,
     surtax.totalAgorot,
   );
   const totalWithheld = addAgorot(
     ...input.salaries.map((s) => s.taxWithheldAgorot),
     capitalGains.withheldAgorot,
+    nonLinkedInterest.withheldAgorot,
   );
   const refund = subAgorot(totalWithheld, totalLiability);
 
@@ -131,6 +144,12 @@ export function calculate(input: TaxYearInput): TaxReturnResult {
     // ניכוי במקור מהכנסות אחרות "לרבות במכירת ניירות ערך סחירים" (טופסי 867,
     // da-2024 סעיף 83) — NOT 043, which is deposit/savings interest only.
     '040': capitalGains.withheldAgorot,
+    // ריבית על פקדונות ותוכניות חיסכון — מס בשיעור של 15% (חלק ה פריט 21).
+    // source: §125ג(ג)(1); 1301-2024/2025 item 21; research report §4.
+    '078': nonLinkedInterest.amountAgorot,
+    // ניכוי במקור מריבית (מפריטים 21-23, פקדונות) — distinct from 040.
+    // source: 1301-2024/2025 item 82; research report §4.
+    '043': nonLinkedInterest.withheldAgorot,
     // הפסדי הון שלא קוזזו המועברים לשנים הבאות (ללא חו"ל), חלק יא סעיף 45ג.
     '166': capitalGains.lossCarryforwardOutAgorot,
     capitalTaxableGain: capitalGains.taxableGainAgorot,
@@ -151,6 +170,7 @@ export function calculate(input: TaxYearInput): TaxReturnResult {
     creditsUnusedAgorot: subAgorot(creditsTotal, creditsApplied),
     incomeTaxAfterCreditsAgorot: incomeTaxAfterCredits,
     capitalGains,
+    nonLinkedInterest,
     surtax,
     totalLiabilityAgorot: totalLiability,
     totalWithheldAgorot: totalWithheld,
