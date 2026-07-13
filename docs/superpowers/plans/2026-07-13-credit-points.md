@@ -19,15 +19,29 @@ URLs (כל-זכות pages, Form 119, gov.il reform law) per line; the engine's
 copy point counts from anywhere else and do not "remember" them** — read them
 from the report tables (§1.1 for children, §3.1 for oleh).
 
+**Primary-source addenda (2026-07-13) — read alongside the report:** the base
+report's counts and allocation rested on secondary sources (כל-זכות); two
+follow-up addenda upgraded most of the in-scope figures to primary:
+`2026-07-13-credit-points-allocation-addendum.md` (allocation via §66(ג)(4)/(5),
+§40(ב) verbatim) and `2026-07-13-credit-points-counts-addendum.md` (§35 oleh
+schedule + child base counts + 2024-reform split verbatim / arithmetic-tied to
+the gov.il consolidated ordinance). Where the checklist below was a "verify the
+count" item, the counts addendum has largely closed it — see §"Owner must
+verify" for exactly what is now primary vs. still open.
+
 **Why this is the safe increment (report §5, §4):** the per-child *counts*
 (§1.1) and the oleh *monthly rates and 7.5 / 8.5 totals* (§3.1) are the
 report's CONFIRMED figures with no live legal ambiguity in the numbers
 themselves. The parts the report marks UNRESOLVED — *which* parent claims a
 child's points (§1.2) and the §40ג degree tracks (§2) — are deferred so that
 zero engine automation rests on an unresolved legal question. The one residual
-UNRESOLVED item that touches even this reduced scope (the §35 הוראת-שעה sunset
-of the 54-month schedule and the clock-pausing events) is carried in the
-"Owner must verify before merge" checklist and is worked around by keeping the
+item that touched this reduced scope — the §35 54-month schedule's feared
+**הוראת-שעה sunset** — is now **RESOLVED**: the counts addendum read §35 in the
+gov.il consolidated ordinance and found the 2022+ schedule (תיקון 262) is *not*
+tagged הוראת שעה, so it is permanent and in force for 2024/2025. The remaining
+open items (clock-pausing events, pre-2022 cohort transition, a few band counts)
+are carried in the "Owner must verify before merge" checklist and worked around
+by keeping the
 reviewer in control of the inputs (explicit `scheduleVariant`, explicit
 qualifying months, no automated pausing).
 
@@ -80,7 +94,7 @@ except for two new `breakdown.reason` values and an optional row label.
 
 ## Confirmed point counts to encode (from the report — do not alter)
 
-### Children — points **per eligible parent**, by the age the child reaches during the tax year (report §1.1, CONFIRMED secondary)
+### Children — points **per eligible parent**, by the age the child reaches during the tax year (report §1.1; ages 0–5 & 18 CONFIRMED primary via counts addendum, 6–17 band still secondary — see checklist)
 
 The engine takes each child's `role` from the reviewer (`'custodial' | 'other'`)
 and does **not** decide who is custodial (that allocation is deferred, §1.2).
@@ -100,7 +114,7 @@ For the young ages both roles get the same count; only ages 6-17 and 18 differ.
 Same table for 2024 and 2025 (report §1.1). Ages outside 0–18 → not eligible;
 the helper **throws** `InvalidTaxInputError` on an out-of-range age (fail-loud).
 
-### Oleh §35 — points **per month**, counted from the month status was granted (report §3.1, CONFIRMED secondary; totals derived)
+### Oleh §35 — points **per month**, counted from the month status was granted (report §3.1; 2022+ schedule CONFIRMED **primary** via counts addendum — §35(א) verbatim, permanent; pre-2022 cohort transition still owner-verify)
 
 | Variant | Month bands → rate/month | Total | Months |
 |---|---|---|---|
@@ -115,8 +129,8 @@ fetched summary that said 3.5 / 4.5):
 Per tax year the points are **apportioned by how many qualifying months of the
 schedule fall in that tax year** (report §3.1) — an oleh who arrives mid-year
 gets a fractional first-year figure. The engine computes this from the aliyah
-year-month and the tax year; it does **not** implement clock-pausing (see
-owner-verify checklist item 2) — the reviewer subtracts paused months by
+year-month and the tax year; it does **not** implement clock-pausing (see the
+"clock-pausing events" owner-verify item) — the reviewer subtracts paused months by
 adjusting the input or falls back to `additionalCreditPoints`.
 
 ---
@@ -147,7 +161,7 @@ adjusting the input or falls back to `additionalCreditPoints`.
   ```
   `scheduleVariant` is an **explicit input** (reviewer/mapping supplies it), not
   derived from the date — deriving it would bake in the exact 1.1.2022 cutoff,
-  which the owner-verify checklist (item 3) has not cleared.
+  which the "pre-2022 cohort transition" owner-verify item has not cleared.
 - Extend `CreditPointsBreakdownRow`: widen `reason` to
   `'resident' | 'female' | 'additional' | 'child' | 'oleh'` and add optional
   `label?: string` (e.g. `"ילד בן 2 (הורה משמורן)"`, `"עולה חדש — 8 חודשים בשנת המס"`)
@@ -248,39 +262,46 @@ still pass unchanged).
 
 ## Owner must verify before merge (carries the report's UNRESOLVED items that touch this scope)
 
-These are legal questions the research report could not resolve from
-primary sources. They gate merge because the engine would otherwise encode an
-unverified rule. Items 1–3 touch the in-scope **oleh** work; 4–5 touch the
-in-scope **children** work; 6–7 are the general provenance caveats.
+**Update 2026-07-13 — the two primary-source addenda closed most of this list.**
+Items confirmed against the gov.il consolidated ordinance are struck through
+below; only the genuinely-open items gate merge (they would otherwise encode an
+unverified rule). Even for the confirmed items, keep the reviewer in control of
+inputs until the owner signs off the scope.
 
-1. **§35 sunset / permanence of the `from2022` 54-month schedule** (report
-   §3.2). It was introduced as a **הוראת שעה** in the 2021–2022 arrangements
-   law; כל-זכות presents it as in force for 2024–2025 olim, but its statutory
-   sunset/renewal must be confirmed against the *current* text of §35 before we
-   ship the `from2022` variant. If it lapsed, that variant must not compute.
-2. **Exact clock-pausing events** (report §3.1/§3.2). The engine in this
-   increment does **not** implement pausing (periods abroad, full-time study,
-   army service that the oleh may exclude). Confirm the exact list against §35;
-   until then document that the reviewer must reduce qualifying months manually
-   or use `additionalCreditPoints`.
-3. **The 1.1.2022 boundary** (report §3.1). Confirm which schedule applies to an
-   oleh whose status was granted around 1.1.2022, and whether `scheduleVariant`
-   may safely be *derived* from the aliyah date (this plan keeps it an explicit
-   input to avoid pre-committing to the cutoff).
-4. **Child age semantics** (report §1.3). Confirm "the age the child *reaches
-   during* the tax year" (not age at year-start) and the boundary handling for a
-   child turning 6 or 18 mid-year — the engine keys the table on `ageInTaxYear`
-   and needs the owner's rule for the transcriber/mapper feeding it.
-5. **6–17 income-source restriction** (report §1.3). The 6–17 addition
-   historically attached to יגיעה-אישית (personal-exertion) income; confirm
-   whether any income-source restriction still applies for 2024–2025.
-6. **Primary-ordinance confirmation of the counts** (report §4). No primary
-   ordinance text (§40, §35) was read for the report — the child §1.1 counts and
-   the oleh §3.1 monthly rates rest on כל-זכות (secondary). Owner should confirm
-   at least §1.1 and §3.1 against the ordinance or the Tax Authority.
-7. **Point value** (report §5). 2,904 ₪/yr (`creditPointValueAgorot: 290_400`)
-   is already owner-verified (2026-07-05) and frozen; the freeze law does not
-   touch the statutory point *counts*. No action — noted for completeness.
+- [x] ~~**§35 sunset / permanence of the `from2022` 54-month schedule**~~ →
+   **RESOLVED** (counts addendum): §35(א) read verbatim in the gov.il
+   consolidated ordinance; the 2022+ schedule (תיקון 262) is **not** tagged
+   הוראת שעה, so it is permanent and in force for 2024–2025. The `from2022`
+   variant is safe to ship.
+- [ ] **Exact clock-pausing events** (report §3.1/§3.2; counts addendum). Primary
+   §35 lists only **absence from the country (6mo–3yr)** as excludable; whether
+   full-time study / army service also pause is **not** in the statute text read —
+   still owner-verify. The engine does not implement pausing this increment; the
+   reviewer reduces qualifying months manually or via `additionalCreditPoints`.
+- [ ] **Pre-2022 cohort transition / 1.1.2022 boundary** (report §3.1; counts
+   addendum). Which schedule applies in 2024/2025 to an oleh whose status
+   predates 1.1.2022 is governed by **תיקון 262's transitional rule**, not yet
+   read verbatim. Plan keeps `scheduleVariant` an explicit input to avoid
+   pre-committing to the cutoff.
+- [ ] **Child age semantics** (report §1.3). Confirm "the age the child *reaches
+   during* the tax year" (not age at year-start) and mid-year turning-6/18
+   boundary handling — the engine keys on `ageInTaxYear` and needs the owner's
+   rule for the transcriber/mapper feeding it. (Not addressed by the addenda.)
+- [ ] **6–17 band: count (1 vs 2) and income-source restriction** (report §1.3;
+   counts addendum). Primary §66(ג)(4)(ד) gives the mother the extra point only
+   for ages **6–12** (textually frozen "בשנת 2022"); the full-6–17 "2" for 2024+
+   is **secondary only** (כל-זכות). Also confirm whether the historical
+   יגיעה-אישית (personal-exertion) income-source restriction still applies.
+- [x] ~~**Primary-ordinance confirmation of the counts**~~ → **largely RESOLVED**
+   (counts addendum): §35, §40(ב), §66(ג)(4) read verbatim + the 2024-reform
+   split arithmetic-tied to the primary base, confirming ages 0–5 & 18 and the
+   oleh schedule. **Still open:** the enacted **ס"ח 3184** §40/§66 wording (all
+   primary hosts 403'd the fetcher) and the married-**father** §66(ג)(5)/(5א)
+   range (btl vs gov.il consolidated texts disagree, older-vs-newer) — resolve
+   against the post-2024 רשומות text.
+- [x] ~~**Point value**~~ 2,904 ₪/yr (`creditPointValueAgorot: 290_400`) already
+   owner-verified (2026-07-05) and frozen; the freeze does not touch statutory
+   point *counts*. No action — noted for completeness.
 
 ---
 
