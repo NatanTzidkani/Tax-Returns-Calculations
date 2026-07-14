@@ -13,10 +13,10 @@ for but NOT built now.
 - Design spec (approved): `docs/superpowers/specs/2026-07-03-tax-returns-app-design.md`
 - Completed foundation plan (example of our plan format): `docs/superpowers/plans/2026-07-03-foundation.md`
 
-## Current state (Plan 5 filing & lifecycle complete, 2026-07-13)
+## Current state (credit-points increments il-0.4.0/il-0.5.0 complete, 2026-07-14)
 
-All green (root `pnpm test`: shared 42, tax-engine 83, api 92, web 55 — clean
-typecheck; engine branch coverage 98.82%, ≥95% gate). The calculation loop is
+All green (root `pnpm test`: shared 46, tax-engine 165, api 104, web 67 — clean
+typecheck; engine branch coverage 99.47%, ≥95% gate). The calculation loop is
 closed end-to-end: confirmed data → `calculate()` → append-only snapshot →
 worksheet panel + Form 1301 filing view → year status flow. Note: the api
 integration suite needs the compose `db` container up (it has no restart
@@ -29,7 +29,7 @@ policy — consider adding `restart: unless-stopped`; if it's down every
 | `packages/api` | Fastify 5, `buildApp(deps?)` with injectable `db`/`storage`/`anthropic`/`googleVerifier`; Drizzle schema, all 7 tables migrated; **Google Sign-In**: `POST /auth/google` (ID-token verify via `google-auth-library`, single-owner-email allowlist), `GET /auth/me`, `POST /auth/logout`, `@fastify/secure-session` cookie, global fail-closed auth-gate `preHandler` (only `GET /health` and `POST /auth/google` are public) — see `docs/superpowers/plans/2026-07-06-google-sign-in.md`; document pipeline: `Storage`/`LocalDiskStorage`, multipart upload, Claude-vision extraction (`ExtractionClient` injectable), `pending→extracted→confirmed|failed`, manual-entry fallback — see `docs/superpowers/plans/2026-07-04-document-pipeline.md`; **Plan 5 filing/lifecycle**: `POST /tax-years/:id/calculate` (maps confirmed data → engine, append-only `calculations` snapshot stamped `ENGINE_VERSION`, engine errors → 400 Hebrew, `metadata.excludedDonations`), `GET /tax-years/:id/calculation` (+`stale`), `PATCH /tax-years/:id/status` (server-enforced legal-transition map, `filedAt` on filing), `refundEstimateAgorot` in `GET /tax-years`; loss carry-forward across years — unique `(user_id, from_year, kind)` (migration `0001`) + `onConflictDoUpdate` so concurrent recalcs can't duplicate, IN-sum filtered to `kind='capital'` |
 | `packages/web` | React 18 + Vite, Hebrew RTL, Tailwind v4 (logical properties only) + Radix + TanStack Router/Query; Dashboard (year list, Hebrew status chips, add-year capped at the current calendar year), tax-year detail (documents panel with upload + per-row review link), and **document review** (`/tax-years/$id/documents/$id`: file viewer w/ zoom, kind-specific forms, uncertain-field highlighting, extract/manual-entry/confirm) screens, styled; **Google Sign-In**: `/sign-in` screen (`@react-oauth/google`), `useAuth()` hook, router `beforeLoad` guard, header sign-out — see `docs/superpowers/plans/2026-07-06-google-sign-in.md`; **Plan 5**: calculation **worksheet panel** in the tax-year detail (taxpayer form → `POST /calculate`, full auditable breakdown — brackets, credit points, pension/charity credits, capital-gains offsets + carry-forward, surtax, totals, refund/owed headline, stale + carry-forward notices, audit stamp; validity owned by shared `CalculateRequestSchema`, form `noValidate` so the Hebrew error isn't swallowed by native input constraints), **Form 1301 filing view** (`/tax-years/$id/filing`: `form1301Fields` transcription table rendered generically with owner-verification warning + status-flow controls offering only legal transitions) |
 | `infra/` | `docker-compose.yml`: db (postgres:17) + api (:3000) + web (:5173); web's Vite proxy targets `http://api:3000` via `VITE_API_PROXY_TARGET` (Compose service-name DNS) |
-| `packages/tax-engine` | Pure TS engine (`calculate(input) → TaxReturnResult`, `ENGINE_VERSION`): IL 2024+2025 year data, **all constants owner-verified 2026-07-05** (`docs/superpowers/research/2026-07-05-tax-constants-verification.md` — zero corrections needed), modules for income-tax brackets, credit points, charity §46, capital gains w/ loss offset + carry-forward, pension §45א, surtax incl. 2025 2% capital add-on, informational NI reconciliation; `form1301Fields` map — **official codes owner-verified 2026-07-13** (`docs/superpowers/research/2026-07-12-form1301-codes-verification.md`): 158/042/045 confirmed, donations → 037 (RAW amount), securities withholding → 040, loss carry-forward out → 166; surtax/liability/refund are code-less named worksheet outputs (no main-form field). `ENGINE_VERSION` = `il-0.2.0` |
+| `packages/tax-engine` | Pure TS engine (`calculate(input) → TaxReturnResult`, `ENGINE_VERSION`): IL 2024+2025 year data, **all constants owner-verified 2026-07-05** (`docs/superpowers/research/2026-07-05-tax-constants-verification.md` — zero corrections needed), modules for income-tax brackets, credit points, charity §46, capital gains w/ loss offset + carry-forward, pension §45א, 15% non-linked interest §125ג(ג)(1) (il-0.3.0; Form 1301 fields 078/043), surtax incl. 2025 2% capital add-on, informational NI reconciliation; `form1301Fields` map — **official codes owner-verified 2026-07-13** (`docs/superpowers/research/2026-07-12-form1301-codes-verification.md`): 158/042/045 confirmed, donations → 037 (RAW amount), securities withholding → 040, loss carry-forward out → 166; surtax/liability/refund are code-less named worksheet outputs (no main-form field); **structured credit points** (accumulator in integer twelfths of a point): children §40 ages 0-5 & 18 via `taxpayer.children` (**6-17 band ships disabled/loud** — count secondary-source-only, owner-verify open), oleh §35 `pre2022`/`from2022` monthly schedules via `taxpayer.aliyah` (il-0.4.0, `docs/superpowers/plans/2026-07-13-credit-points.md`), degrees §40ג–§40ה bachelor/master/vocational claim windows via `taxpayer.degrees` — 2023+ fixed min(studyYears,cap), 2014-2022 elective year, internship deferral, §7(ב)/(ג) exclusivity; medicine/direct-track PhD + pre-2014 stay on `additionalCreditPoints` (il-0.5.0, `docs/superpowers/plans/2026-07-14-degree-credit-points.md`); parent-allocation regimes still deferred (plan written); **the new structured inputs are engine-only** — shared Zod/API/UI wiring is a future plan, the worksheet form still sends only `additionalCreditPoints`. `ENGINE_VERSION` = `il-0.5.0` |
 
 **⚠️ Auth changes phase-1 scope.** The design spec (§1) originally listed
 authentication as out of scope for phase 1 ("single-user, running locally,
@@ -48,11 +48,11 @@ in — see `.env.example`.
 Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §10):
 
 1. ~~**Plan 2 — tax-engine core**~~ DONE 2026-07-04, constants verified
-   2026-07-05. Left open on purpose: children/degree/oleh credit-point
-   tables (reviewer enters verified totals via `additionalCreditPoints`
-   until their own plan — draft source-annotated tables already researched
-   in the verification report above), §47 deductions, 15% non-linked-interest
-   cases.
+   2026-07-05. The items it left open have since landed in follow-on
+   increments: 15% non-linked interest (il-0.3.0), children+oleh credit
+   points (il-0.4.0), degrees §40ג–§40ה (il-0.5.0) — see the tax-engine row
+   and item 6 below. Still open: §47 deductions (plan written,
+   `docs/superpowers/plans/2026-07-13-section47-deductions.md`).
 2. ~~**Plan 3 — document pipeline**~~ DONE 2026-07-05.
 3. ~~**Plan 4 — UI screens**~~ DONE 2026-07-06 incl. the document review
    screen (`docs/superpowers/plans/2026-07-06-document-review-screen.md`):
@@ -74,6 +74,22 @@ Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §
    donations → field 037 (RAW amount; Authority applies §46 rate/ceilings),
    securities withholding → 040 (042 salary-only), loss carry-forward out →
    166; ENGINE_VERSION → il-0.2.0.
+6. ~~**Credit-points increments — children+oleh (il-0.4.0) and degrees
+   (il-0.5.0)**~~ DONE 2026-07-14
+   (`docs/superpowers/plans/2026-07-13-credit-points.md`,
+   `docs/superpowers/plans/2026-07-14-degree-credit-points.md`): structured
+   `children`/`aliyah`/`degrees` engine inputs, all counts read from the
+   primary-source research reports; every not-yet-verified rule (6-17 child
+   band, clock-pausing, pre-2022 cohort boundary) ships disabled/loud with
+   `additionalCreditPoints` as the reviewer fallback. **Still ahead:**
+   parent-allocation regimes (§66(ג)/§40(ב), plan written
+   `docs/superpowers/plans/2026-07-13-parent-allocation.md`, gated on
+   owner-verify items incl. the פעוט range), §47 deductions (plan written),
+   and the downstream wiring plan (shared Zod → API `CalculateRequestSchema`
+   → worksheet UI for the new structured inputs; note the worksheet breakdown
+   renderer keys rows by `reason` and its i18n map lacks the new
+   `child`/`oleh`/`degree` reasons + engine-supplied `label`s — must be
+   handled there).
 
 ## Non-negotiable conventions
 
