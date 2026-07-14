@@ -154,9 +154,10 @@ describe('calculate — golden scenarios', () => {
         },
       }),
     );
-    // Structured children/oleh inputs are stamped as a new rule set.
-    expect(ENGINE_VERSION).toBe('il-0.4.0');
-    expect(res.engineVersion).toBe('il-0.4.0');
+    // Structured children/oleh inputs are stamped as a new rule set
+    // (il-0.4.0; the current version also carries the degree increment).
+    expect(ENGINE_VERSION).toBe('il-0.5.0');
+    expect(res.engineVersion).toBe('il-0.5.0');
     expect(res.creditPoints.points).toBe(10.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(29_766));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([
@@ -170,6 +171,38 @@ describe('calculate — golden scenarios', () => {
     expect(res.incomeTaxAfterCreditsAgorot).toBe(0);
     expect(res.creditsAppliedAgorot).toBe(sh(13_435.2));
     expect(res.refundAgorot).toBe(sh(12_000));
+  });
+
+  it('golden 2025: salary + bachelor in window year 2 (il-0.5.0)', () => {
+    // Bachelor completed 2023, 3 study years → fixed window 2024-2026
+    // (addendum §1); 2025 is window year 2 → 1 point. Credit points in
+    // twelfths: resident 27 + degree 12 = 39 = 3.25 points = 9,438 ₪.
+    const res = calculate(
+      baseInput({
+        salaries: [salary(120_000, 12_000, 7_200)],
+        taxpayer: {
+          isIsraeliResident: true,
+          gender: 'male',
+          degrees: [{ track: 'bachelor', completionYear: 2023, studyYears: 3 }],
+        },
+      }),
+    );
+    // Structured degree input is stamped as a new rule set.
+    expect(ENGINE_VERSION).toBe('il-0.5.0');
+    expect(res.engineVersion).toBe('il-0.5.0');
+    expect(res.creditPoints.points).toBe(3.25);
+    expect(res.creditPoints.valueAgorot).toBe(sh(9_438));
+    expect(res.creditPoints.breakdown).toContainEqual({
+      reason: 'degree',
+      points: 1,
+      label: 'תואר ראשון — נקודת זיכוי, שנה 2 מתוך 3 (סיום לימודים 2023)',
+    });
+    // Income tax 13,435.2 ₪ − credits (9,438 + pension 2,520 = 11,958) →
+    // 1,477.2 ₪ liability; 12,000 withheld → 10,522.8 ₪ refund.
+    expect(res.creditsAppliedAgorot).toBe(sh(11_958));
+    expect(res.incomeTaxAfterCreditsAgorot).toBe(sh(1_477.2));
+    expect(res.totalLiabilityAgorot).toBe(sh(1_477.2));
+    expect(res.refundAgorot).toBe(sh(10_522.8));
   });
 
   it('exposes a form 1301 field map with verified official codes', () => {

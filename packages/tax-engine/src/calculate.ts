@@ -22,8 +22,14 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * 0.4.0: child (§40 ages 0-5 & 18; 6-17 disabled pending owner verification)
  * and oleh (§35 pre2022/from2022 monthly schedules) credit points computed
  * from new structured `taxpayer.children` / `taxpayer.aliyah` inputs;
- * credit-point accumulator moved to integer twelfths. */
-export const ENGINE_VERSION = 'il-0.4.0';
+ * credit-point accumulator moved to integer twelfths.
+ * 0.5.0: §40ג–§40ה degree/vocational credit points (bachelor/master/
+ * vocational) computed from new structured `taxpayer.degrees` input — 2023+
+ * fixed min(studyYears, cap) windows, 2014-2022 single elective year, Form
+ * 119 §6 internship start deferral, §7(ב)/§7(ג) exclusivity guards;
+ * medicine/direct-track PhD and pre-2014 completions stay on
+ * additionalCreditPoints. */
+export const ENGINE_VERSION = 'il-0.5.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
