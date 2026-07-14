@@ -63,6 +63,30 @@ export interface TaxpayerInput {
     aliyahMonth: number;
     scheduleVariant: 'pre2022' | 'from2022';
   };
+  /**
+   * §40ג–§40ה degree/vocational credit points. Reviewer-supplied; the reviewer
+   * attests eligibility (recognized degree §7(ה), vocational conditions §7(ו),
+   * proof §7(א)); the engine derives the claim window and points for the tax
+   * year. Absent → no degree points from structured input
+   * (additionalCreditPoints remains the fallback).
+   * source: docs/superpowers/research/2026-07-13-degrees-40g-addendum.md
+   */
+  degrees?: Array<{
+    track: 'bachelor' | 'master' | 'vocational';
+    /** Tax year in which the studies for this degree/certificate ended. ≥ 2014
+     *  (earlier cohorts are out of scope → loud throw). */
+    completionYear: number;
+    /** Academic study years (integer ≥ 1; window length = min(studyYears, cap)). */
+    studyYears: number;
+    /** 2014-2022 cohort ONLY: the single elected benefit year — base+1 or base+2
+     *  (base = internship end year if internship supplied, else completionYear).
+     *  Required for that cohort; forbidden (loud throw) for 2023+. */
+    electedClaimYear?: number;
+    /** Form 119 §6 internship deferral (bachelor/master only). Presence = the
+     *  taxpayer ELECTS the internship-based start (window/candidates run from
+     *  endYear + 1 instead of completionYear + 1). */
+    internship?: { startYear: number; endYear: number };
+  }>;
 }
 
 /**
@@ -114,8 +138,7 @@ export interface IncomeTaxResult {
 }
 
 export interface CreditPointsBreakdownRow {
-  // 'degree' is intentionally NOT here yet — §40ג is deferred to its own plan.
-  reason: 'resident' | 'female' | 'additional' | 'child' | 'oleh';
+  reason: 'resident' | 'female' | 'additional' | 'child' | 'oleh' | 'degree';
   points: number;
   /** Hebrew worksheet label saying WHY the points were granted (no black box). */
   label?: string;

@@ -11,6 +11,10 @@ import {
   olehQualifyingMonthsInTaxYear,
   olehTwelfthsForTaxYear,
 } from '../rules/credit-points-tables';
+import {
+  assertDegreeExclusivity,
+  degreeTwelfthsForTaxYear,
+} from '../rules/degree-credit-points';
 
 // Points are handled internally in TWELFTHS of a point so arithmetic stays
 // integer: the oleh §35 schedule uses ¼ / ⅙ / 1/12 per-month rates, and 12 is
@@ -22,9 +26,12 @@ import {
 // - Children (§40) and oleh (§35) tables: ../rules/credit-points-tables.ts,
 //   citing docs/superpowers/research/2026-07-13-credit-points-verification.md
 //   §1.1 / §3.1.
-// Degree tables (§40ג), the 6-17 child band, and parent allocation are NOT
-// computed here yet — the reviewer passes their verified total via
-// additionalCreditPoints.
+// - Degrees (§40ג-§40ה bachelor/master/vocational claim windows):
+//   ../rules/degree-credit-points.ts, citing
+//   docs/superpowers/research/2026-07-13-degrees-40g-addendum.md.
+// The 6-17 child band, parent allocation, medicine/direct-track PhD, and
+// pre-2014 completions are NOT computed here — the reviewer passes their
+// verified total via additionalCreditPoints.
 
 const RESIDENT_TWELFTHS = 27; // 2.25 points
 const FEMALE_TWELFTHS = 6; // 0.5 point
@@ -94,6 +101,23 @@ export function computeCreditPoints(
         label: `עולה חדש — ${months} חודשים בשנת המס`,
       });
       twelfths += olehTwelfths;
+    }
+  }
+
+  if (taxpayer.degrees !== undefined) {
+    // §7(ב)/§7(ג) contradictions fail loud once, over the whole array.
+    assertDegreeExclusivity(taxpayer.degrees);
+    for (const degree of taxpayer.degrees) {
+      // The rules helper owns all guards and the claim-window derivation;
+      // an out-of-window degree yields 0 — no zero rows in the worksheet.
+      const { twelfths: degreeTwelfths, label } = degreeTwelfthsForTaxYear(
+        degree,
+        yearData.year,
+      );
+      if (degreeTwelfths > 0) {
+        breakdown.push({ reason: 'degree', points: degreeTwelfths / 12, label });
+        twelfths += degreeTwelfths;
+      }
     }
   }
 

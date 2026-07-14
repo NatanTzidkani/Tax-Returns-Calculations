@@ -3,6 +3,7 @@ import { InvalidTaxInputError } from '../../../src/core/errors';
 import { getIlYearData } from '../../../src/jurisdictions/il';
 import { computeCreditPoints } from '../../../src/jurisdictions/il/modules/credit-points';
 
+const y2024 = getIlYearData(2024);
 const y2025 = getIlYearData(2025);
 
 describe('computeCreditPoints', () => {
@@ -179,6 +180,111 @@ describe('computeCreditPoints', () => {
       reason: 'oleh',
       points: 8 / 12,
       label: 'עולה חדש — 8 חודשים בשנת המס',
+    });
+  });
+
+  // Structured degree inputs (§40ג-§40ה via rules/degree-credit-points,
+  // addendum docs/superpowers/research/2026-07-13-degrees-40g-addendum.md).
+
+  it('adds a bachelor in its first window year (2024) to a resident man → 3.25 points', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        degrees: [{ track: 'bachelor', completionYear: 2023, studyYears: 3 }],
+      },
+      y2024,
+    );
+    expect(res.points).toBe(3.25);
+    expect(res.valueAgorot).toBe(943_800); // 39 twelfths × 24,200
+    expect(res.breakdown).toContainEqual({
+      reason: 'degree',
+      points: 1,
+      label: 'תואר ראשון — נקודת זיכוי, שנה 1 מתוך 3 (סיום לימודים 2023)',
+    });
+  });
+
+  it('a woman with an elective-cohort bachelor + a 2023+ master gets two degree rows → 4.25 points', () => {
+    // 2.75 (resident woman) + 1 (BA 2014-2022, elected 2024) + 0.5 (MA 2023,
+    // window year 1) = 4.25 — BA + MA stack (one benefit per LEVEL, §7(ב)).
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        degrees: [
+          { track: 'bachelor', completionYear: 2022, studyYears: 3, electedClaimYear: 2024 },
+          { track: 'master', completionYear: 2023, studyYears: 2 },
+        ],
+      },
+      y2024,
+    );
+    expect(res.points).toBe(4.25);
+    const degreeRows = res.breakdown.filter((row) => row.reason === 'degree');
+    expect(degreeRows).toEqual([
+      {
+        reason: 'degree',
+        points: 1,
+        label: 'תואר ראשון — נקודת זיכוי (שנת מס נבחרת 2024)',
+      },
+      {
+        reason: 'degree',
+        points: 0.5,
+        label: 'תואר שני — חצי נקודת זיכוי, שנה 1 מתוך 2 (סיום לימודים 2023)',
+      },
+    ]);
+  });
+
+  it('an out-of-window degree adds no row and leaves points unchanged', () => {
+    // History entry: the window was 2020 — nothing in 2025, no zero rows.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        degrees: [
+          { track: 'bachelor', completionYear: 2019, studyYears: 3, electedClaimYear: 2020 },
+        ],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(2.25);
+    expect(res.breakdown).toEqual([{ reason: 'resident', points: 2.25 }]);
+  });
+
+  it('vocational + bachelor in the array propagates the loud §7(ג) throw', () => {
+    expect(() =>
+      computeCreditPoints(
+        {
+          isIsraeliResident: true,
+          gender: 'male',
+          degrees: [
+            { track: 'vocational', completionYear: 2023, studyYears: 2 },
+            { track: 'bachelor', completionYear: 2023, studyYears: 3 },
+          ],
+        },
+        y2025,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('degrees combine with children and additional points to an exact twelfth-integer value', () => {
+    // 27 (resident) + 54 (child age 2) + 12 (BA 2023, window year 2 of 3 in
+    // 2025) + 3 (additional 0.25) = 96 twelfths = 8 points exactly.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        additionalCreditPoints: 0.25,
+        children: [{ ageInTaxYear: 2, role: 'custodial' }],
+        degrees: [{ track: 'bachelor', completionYear: 2023, studyYears: 3 }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(8);
+    expect(res.valueAgorot).toBe(2_323_200); // 96 × 290,400 / 12 exactly
+    expect(res.breakdown).toContainEqual({
+      reason: 'degree',
+      points: 1,
+      label: 'תואר ראשון — נקודת זיכוי, שנה 2 מתוך 3 (סיום לימודים 2023)',
     });
   });
 
