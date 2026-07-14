@@ -4,6 +4,7 @@ import {
   agorot,
   CalculateRequestSchema,
   formatILS,
+  shekelsToAgorot,
 } from '@taxreturns/shared';
 import type { BracketRow, TaxReturnResult } from '@taxreturns/tax-engine';
 import { Label } from 'radix-ui';
@@ -71,6 +72,24 @@ const moneyCellClasses =
 /** rateBp (e.g. 1400 = 14%) → "14%". Basis points are exact integers. */
 function formatRateBp(rateBp: number): string {
   return `${rateBp / 100}%`;
+}
+
+/**
+ * A blank ₪ entry → `undefined` (omit from the body: absent = 0, unchanged
+ * behavior). Otherwise convert shekels to integer agorot via the shared money
+ * helper (never hand-rolled float math); garbage/overflow becomes NaN so the
+ * shared Zod schema rejects it instead of silently defaulting to 0.
+ */
+function optionalShekelsToAgorot(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (trimmed === '') return undefined;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  try {
+    return shekelsToAgorot(parsed);
+  } catch {
+    return Number.NaN;
+  }
 }
 
 function MoneyRow({ label, value }: { label: string; value: Agorot }) {
@@ -148,7 +167,9 @@ function TaxpayerForm({
   const queryClient = useQueryClient();
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [additionalPoints, setAdditionalPoints] = useState('');
-  const [invalidPoints, setInvalidPoints] = useState(false);
+  const [interest, setInterest] = useState('');
+  const [interestWithheld, setInterestWithheld] = useState('');
+  const [invalid, setInvalid] = useState<'points' | 'interest' | null>(null);
   const mutation = useMutation({
     mutationFn: (body: CalculateRequestBody) => calculateTaxYear(taxYearId, body),
     onSuccess: async (response) => {
@@ -161,19 +182,31 @@ function TaxpayerForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nonLinkedInterestAgorot = optionalShekelsToAgorot(interest);
+    const nonLinkedInterestWithheldAgorot =
+      optionalShekelsToAgorot(interestWithheld);
     const body: CalculateRequestBody = {
       taxpayer: {
         gender,
         additionalCreditPoints:
           additionalPoints.trim() === '' ? 0 : Number(additionalPoints),
       },
+      // Blank → omit so absent means 0 (unchanged behavior).
+      ...(nonLinkedInterestAgorot !== undefined ? { nonLinkedInterestAgorot } : {}),
+      ...(nonLinkedInterestWithheldAgorot !== undefined
+        ? { nonLinkedInterestWithheldAgorot }
+        : {}),
     };
     // The shared schema is the single source of truth for validity.
-    if (!CalculateRequestSchema.safeParse(body).success) {
-      setInvalidPoints(true);
+    const parsed = CalculateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      const onInterest = parsed.error.issues.some((issue) =>
+        String(issue.path[0] ?? '').startsWith('nonLinkedInterest'),
+      );
+      setInvalid(onInterest ? 'interest' : 'points');
       return;
     }
-    setInvalidPoints(false);
+    setInvalid(null);
     mutation.mutate(body);
   }
 
@@ -212,14 +245,56 @@ function TaxpayerForm({
             className={`${fieldClasses} w-28`}
           />
         </div>
+        <div className="flex flex-col gap-1.5">
+          <Label.Root
+            htmlFor="worksheet-interest-input"
+            className={labelClasses}
+          >
+            {t('worksheet.nonLinkedInterestInputLabel')}
+          </Label.Root>
+          <input
+            id="worksheet-interest-input"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            value={interest}
+            onChange={(event) => setInterest(event.target.value)}
+            className={`${fieldClasses} w-36`}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label.Root
+            htmlFor="worksheet-interest-withheld-input"
+            className={labelClasses}
+          >
+            {t('worksheet.nonLinkedInterestWithheldInputLabel')}
+          </Label.Root>
+          <input
+            id="worksheet-interest-withheld-input"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            value={interestWithheld}
+            onChange={(event) => setInterestWithheld(event.target.value)}
+            className={`${fieldClasses} w-36`}
+          />
+        </div>
         <button type="submit" disabled={mutation.isPending} className={primaryButtonClasses}>
           {t('worksheet.calculateButton')}
         </button>
       </div>
       <p className={mutedTextClasses}>{t('worksheet.additionalPointsHelp')}</p>
-      {invalidPoints ? (
+      <p className={mutedTextClasses}>{t('worksheet.nonLinkedInterestInputHelp')}</p>
+      {invalid === 'points' ? (
         <p role="alert" className={alertClasses}>
           {t('worksheet.invalidPoints')}
+        </p>
+      ) : null}
+      {invalid === 'interest' ? (
+        <p role="alert" className={alertClasses}>
+          {t('worksheet.invalidInterest')}
         </p>
       ) : null}
       {mutation.isError ? (

@@ -142,6 +142,13 @@ export const resources = {
         calculateButton: 'חישוב',
         invalidPoints:
           'נקודות הזיכוי הנוספות חייבות להיות מספר לא שלילי בכפולות של 0.25',
+        nonLinkedInterestInputLabel:
+          'הכנסת ריבית על נכס שאינו צמוד מדד (15%) (₪)',
+        nonLinkedInterestWithheldInputLabel: 'ניכוי במקור על הריבית (₪)',
+        nonLinkedInterestInputHelp:
+          'ריבית על פיקדון או תוכנית חיסכון שאינם צמודי מדד (סעיף 125ג, שדה 078; ניכוי במקור שדה 043) — מזינים בשקלים.',
+        invalidInterest:
+          'הכנסת הריבית והניכוי במקור חייבים להיות סכומים לא שליליים בשקלים',
         calculateError: 'החישוב נכשל',
         refund: 'החזר מס',
         owed: 'יתרה לתשלום',

@@ -217,6 +217,83 @@ describe('WorksheetPanel', () => {
     ).toBeTruthy();
   });
 
+  it('POSTs 15% non-linked interest (078/043) as integer agorot and renders its audit line', async () => {
+    const calculated = makeCalculation({}, {
+      nonLinkedInterest: {
+        reason: 'nonLinkedInterest',
+        amountAgorot: a(1_234_500),
+        rateBp: 1500,
+        taxAgorot: a(185_175),
+        withheldAgorot: a(50_000),
+      },
+    });
+    vi.mocked(getCalculation)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(calculated);
+    const response: CalculateResponse = {
+      id: calculated.id,
+      taxYearId: calculated.taxYearId,
+      engineVersion: calculated.engineVersion,
+      input: calculated.input,
+      result: calculated.result,
+      createdAt: calculated.createdAt,
+      metadata: { excludedDonations: 0 },
+    };
+    vi.mocked(calculateTaxYear).mockResolvedValue(response);
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // ₪12,345.00 income, ₪500.00 withheld → integer agorot.
+    await user.type(
+      await screen.findByLabelText('הכנסת ריבית על נכס שאינו צמוד מדד (15%) (₪)'),
+      '12345',
+    );
+    await user.type(
+      screen.getByLabelText('ניכוי במקור על הריבית (₪)'),
+      '500',
+    );
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: { gender: 'male', additionalCreditPoints: 0 },
+          nonLinkedInterestAgorot: 1_234_500,
+          nonLinkedInterestWithheldAgorot: 50_000,
+        }),
+      { timeout: 10_000 },
+    );
+
+    // The worksheet audit section for the interest renders after calculation.
+    expect(
+      await screen.findByText(
+        (c) => normalize(c).includes('הכנסת ריבית (שדה 078)'),
+        undefined,
+        { timeout: 10_000 },
+      ),
+    ).toBeTruthy();
+  });
+
+  it('rejects a negative non-linked interest amount without POSTing', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.type(
+      await screen.findByLabelText('הכנסת ריבית על נכס שאינו צמוד מדד (15%) (₪)'),
+      '-5',
+    );
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    expect(
+      await screen.findByText(
+        'הכנסת הריבית והניכוי במקור חייבים להיות סכומים לא שליליים בשקלים',
+      ),
+    ).toBeTruthy();
+    expect(calculateTaxYear).not.toHaveBeenCalled();
+  });
+
   it('rejects additional credit points that are not a multiple of 0.25 without POSTing', async () => {
     vi.mocked(getCalculation).mockResolvedValue(null);
     const user = userEvent.setup();
