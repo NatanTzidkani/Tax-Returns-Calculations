@@ -73,3 +73,90 @@ export function childPointTwelfths(ageInTaxYear: number, role: ChildRole): numbe
   }
   return role === 'custodial' ? row[0] : row[1];
 }
+
+export type OlehScheduleVariant = 'pre2022' | 'from2022';
+
+interface OlehScheduleBand {
+  /** Last 1-based schedule month this band covers (inclusive). */
+  throughMonth: number;
+  twelfthsPerMonth: number;
+}
+
+/**
+ * §35 oleh graduated monthly schedules, counted from the month oleh status
+ * was granted. Twelfths per month: ¼ pt = 3, ⅙ pt = 2, 1/12 pt = 1.
+ */
+const OLEH_SCHEDULES: Readonly<Record<OlehScheduleVariant, readonly OlehScheduleBand[]>> =
+  Object.freeze({
+    // source: docs/superpowers/research/2026-07-13-credit-points-verification.md
+    // §3.1 (kz-oleh) — aliyah before 1.1.2022:
+    // mo 1-18: ¼ · mo 19-30: ⅙ · mo 31-42: 1/12 → total 7.5 pts / 42 months.
+    pre2022: Object.freeze([
+      { throughMonth: 18, twelfthsPerMonth: 3 },
+      { throughMonth: 30, twelfthsPerMonth: 2 },
+      { throughMonth: 42, twelfthsPerMonth: 1 },
+    ]),
+    // source: docs/superpowers/research/2026-07-13-credit-points-verification.md
+    // §3.1 (kz-oleh) — aliyah from 1.1.2022 (תיקון 262, permanent per the
+    // counts addendum): mo 1-12: 1/12 · mo 13-30: ¼ · mo 31-42: ⅙ ·
+    // mo 43-54: 1/12 → total 8.5 pts / 54 months.
+    from2022: Object.freeze([
+      { throughMonth: 12, twelfthsPerMonth: 1 },
+      { throughMonth: 30, twelfthsPerMonth: 3 },
+      { throughMonth: 42, twelfthsPerMonth: 2 },
+      { throughMonth: 54, twelfthsPerMonth: 1 },
+    ]),
+  });
+
+function olehRateForScheduleMonth(
+  bands: readonly OlehScheduleBand[],
+  scheduleMonth: number,
+): number {
+  if (scheduleMonth < 1) return 0;
+  for (const band of bands) {
+    if (scheduleMonth <= band.throughMonth) return band.twelfthsPerMonth;
+  }
+  return 0; // past the schedule window
+}
+
+/**
+ * Twelfths of a point an oleh accrues within `taxYear`: for each calendar
+ * month of the tax year, the 1-based elapsed schedule month is looked up in
+ * the variant's bands and the matching per-month rate summed (report §3.1
+ * apportionment — a mid-year aliyah gets a fractional first-year figure).
+ * No clock-pausing is modelled (plan owner-verify item "exact clock-pausing
+ * events"); the reviewer adjusts inputs or uses additionalCreditPoints.
+ */
+export function olehTwelfthsForTaxYear(
+  variant: OlehScheduleVariant,
+  aliyahYear: number,
+  aliyahMonth: number,
+  taxYear: number,
+): number {
+  const bands = OLEH_SCHEDULES[variant];
+  if (bands === undefined) {
+    throw new InvalidTaxInputError(
+      'aliyah.scheduleVariant',
+      `unknown oleh schedule variant "${variant}" (expected "pre2022" or "from2022")`,
+    );
+  }
+  if (!Number.isInteger(aliyahMonth) || aliyahMonth < 1 || aliyahMonth > 12) {
+    throw new InvalidTaxInputError(
+      'aliyah.aliyahMonth',
+      `must be an integer calendar month 1-12, got ${aliyahMonth}`,
+    );
+  }
+  if (!Number.isInteger(aliyahYear) || !Number.isInteger(taxYear)) {
+    throw new InvalidTaxInputError(
+      'aliyah.aliyahYear',
+      `aliyah year and tax year must be integers, got ${aliyahYear} / ${taxYear}`,
+    );
+  }
+
+  let twelfths = 0;
+  for (let m = 1; m <= 12; m += 1) {
+    const scheduleMonth = (taxYear - aliyahYear) * 12 + (m - aliyahMonth) + 1;
+    twelfths += olehRateForScheduleMonth(bands, scheduleMonth);
+  }
+  return twelfths;
+}
