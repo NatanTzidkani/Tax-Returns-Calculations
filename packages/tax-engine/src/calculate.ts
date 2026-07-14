@@ -18,8 +18,12 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * persisted result.
  * 0.3.0: added the 15% non-linked-interest branch (§125ג(ג)(1)) — new
  * `nonLinkedInterest` result section and Form 1301 fields 078/043; feeds
- * totalLiability, the surtax capital base, and totalWithheld. */
-export const ENGINE_VERSION = 'il-0.3.0';
+ * totalLiability, the surtax capital base, and totalWithheld.
+ * 0.4.0: child (§40 ages 0-5 & 18; 6-17 disabled pending owner verification)
+ * and oleh (§35 pre2022/from2022 monthly schedules) credit points computed
+ * from new structured `taxpayer.children` / `taxpayer.aliyah` inputs;
+ * credit-point accumulator moved to integer twelfths. */
+export const ENGINE_VERSION = 'il-0.4.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */

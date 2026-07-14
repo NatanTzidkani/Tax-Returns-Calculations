@@ -130,4 +130,10 @@ describe('olehTwelfthsForTaxYear — §35 oleh monthly schedules (report §3.1)'
       olehTwelfthsForTaxYear('pre2022', 2024, month, 2024),
     ).toThrow(InvalidTaxInputError);
   });
+
+  it('throws on a non-integer aliyah year (fail-loud)', () => {
+    expect(() =>
+      olehTwelfthsForTaxYear('pre2022', 2024.5, 1, 2024),
+    ).toThrow(InvalidTaxInputError);
+  });
 });

@@ -136,6 +136,42 @@ describe('calculate — golden scenarios', () => {
     expect(res.surtax.capitalAdditionalSurtaxAgorot).toBe(0);
   });
 
+  it('golden 2025: salary + two children (2, 4) + oleh first year (il-0.4.0)', () => {
+    // Credit points in twelfths: resident 27 + child age 2 → 54 + child age 4
+    // → 30 (report §1.1) + from2022 oleh full first year 1/12×12 = 12 (report
+    // §3.1) = 123 twelfths = 10.25 points = 123 × 242 ₪ = 29,766 ₪.
+    const res = calculate(
+      baseInput({
+        salaries: [salary(120_000, 12_000, 7_200)],
+        taxpayer: {
+          isIsraeliResident: true,
+          gender: 'male',
+          children: [
+            { ageInTaxYear: 2, role: 'custodial' },
+            { ageInTaxYear: 4, role: 'custodial' },
+          ],
+          aliyah: { aliyahYear: 2025, aliyahMonth: 1, scheduleVariant: 'from2022' },
+        },
+      }),
+    );
+    // Structured children/oleh inputs are stamped as a new rule set.
+    expect(ENGINE_VERSION).toBe('il-0.4.0');
+    expect(res.engineVersion).toBe('il-0.4.0');
+    expect(res.creditPoints.points).toBe(10.25);
+    expect(res.creditPoints.valueAgorot).toBe(sh(29_766));
+    expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([
+      'resident',
+      'child',
+      'child',
+      'oleh',
+    ]);
+    // Income tax 13,435.2 ₪ < credits (29,766 + pension 2,520) → tax zeroed,
+    // full withholding refunded.
+    expect(res.incomeTaxAfterCreditsAgorot).toBe(0);
+    expect(res.creditsAppliedAgorot).toBe(sh(13_435.2));
+    expect(res.refundAgorot).toBe(sh(12_000));
+  });
+
   it('exposes a form 1301 field map with verified official codes', () => {
     // Codes verified 2026-07-12:
     // docs/superpowers/research/2026-07-12-form1301-codes-verification.md
