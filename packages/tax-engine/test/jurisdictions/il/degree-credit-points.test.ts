@@ -164,3 +164,97 @@ describe('degreeTwelfthsForTaxYear — 2014-2022 elective year (addendum §1/§2
     ).toThrow(InvalidTaxInputError);
   });
 });
+
+describe('degreeTwelfthsForTaxYear — internship (התמחות) deferral, Form 119 §6 (addendum §4)', () => {
+  it('2023+: shifts the window start to the year after the internship ended, length unchanged', () => {
+    // Bachelor completed 2023, internship 2024-2024 → window 2025-2027
+    // (still 3 years — the deferral never ADDS years).
+    const deg = bachelor({ internship: { startYear: 2024, endYear: 2024 } });
+    expect(degreeTwelfthsForTaxYear(deg, 2024).twelfths).toBe(0);
+    expect(degreeTwelfthsForTaxYear(deg, 2025).twelfths).toBe(12);
+    expect(degreeTwelfthsForTaxYear(deg, 2027).twelfths).toBe(12);
+    expect(degreeTwelfthsForTaxYear(deg, 2028).twelfths).toBe(0);
+  });
+
+  it('labels the deferral in the worksheet row', () => {
+    expect(
+      degreeTwelfthsForTaxYear(
+        bachelor({ internship: { startYear: 2024, endYear: 2024 } }),
+        2025,
+      ).label,
+    ).toBe(
+      'תואר ראשון — נקודת זיכוי, שנה 1 מתוך 3 (סיום לימודים 2023) (נדחה לאחר התמחות שהסתיימה ב-2024)',
+    );
+  });
+
+  it('2014-2022 + internship: elective candidates run from the internship end', () => {
+    // Bachelor completed 2021, internship 2022-2023 → candidates {2024, 2025}
+    // (owner-verify checklist item covers this interaction).
+    const deg = bachelor({
+      completionYear: 2021,
+      internship: { startYear: 2022, endYear: 2023 },
+      electedClaimYear: 2024,
+    });
+    expect(degreeTwelfthsForTaxYear(deg, 2024).twelfths).toBe(12);
+    expect(degreeTwelfthsForTaxYear(deg, 2023).twelfths).toBe(0);
+  });
+
+  it('throws for an internship on a vocational certificate (§6 covers academic degrees only)', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        {
+          track: 'vocational',
+          completionYear: 2023,
+          studyYears: 2,
+          internship: { startYear: 2024, endYear: 2024 },
+        },
+        2025,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws for an internship that ended before 2012 (§6 applies to internships ending 2012+)', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        bachelor({ internship: { startYear: 2010, endYear: 2011 } }),
+        2024,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws when the internship began later than the year after completion ("תחל לא יאוחר משנת המס שלאחר")', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        bachelor({ internship: { startYear: 2025, endYear: 2026 } }),
+        2027,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws when the internship ends before it starts', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        bachelor({ internship: { startYear: 2024, endYear: 2023 } }),
+        2024,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws when the internship ends before the degree completion (a deferral cannot move the start earlier)', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        bachelor({ internship: { startYear: 2015, endYear: 2016 } }),
+        2024,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws on non-integer internship years (fail-loud, never rounds)', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        bachelor({ internship: { startYear: 2024, endYear: 2024.5 } }),
+        2025,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+});

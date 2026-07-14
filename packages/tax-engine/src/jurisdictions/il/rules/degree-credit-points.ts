@@ -89,7 +89,7 @@ export function degreeTwelfthsForTaxYear(
   degree: DegreeInput,
   taxYear: number,
 ): { twelfths: number; label: string } {
-  const { track, completionYear, studyYears, electedClaimYear } = degree;
+  const { track, completionYear, studyYears, electedClaimYear, internship } = degree;
 
   const trackRule = DEGREE_TRACKS[track];
   if (trackRule === undefined) {
@@ -114,6 +114,64 @@ export function degreeTwelfthsForTaxYear(
     );
   }
 
+  if (internship !== undefined) {
+    // source: docs/superpowers/research/2026-07-13-degrees-40g-addendum.md §4
+    // (form119-2024 §6) — the internship deferral exists for a BACHELOR'S or
+    // MASTER'S in a profession requiring an internship, where the internship
+    // ended in 2012 or later and began no later than the tax year after
+    // degree completion. It shifts the benefit start only; it never adds
+    // years and can never move the start earlier than the degree-based one.
+    if (track === 'vocational') {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].internship',
+        `not applicable to a vocational certificate — Form 119 §6 covers ` +
+          `academic bachelor's/master's degrees only (addendum §4)`,
+      );
+    }
+    if (!Number.isInteger(internship.startYear) || !Number.isInteger(internship.endYear)) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].internship',
+        `startYear and endYear must be integer tax years, got ` +
+          `${internship.startYear} / ${internship.endYear}`,
+      );
+    }
+    if (internship.endYear < 2012) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].internship.endYear',
+        `Form 119 §6 applies to internships ending in 2012 or later ` +
+          `("סיים התמחות בשנת 2012 ואילך", addendum §4), got ${internship.endYear}`,
+      );
+    }
+    if (internship.startYear > completionYear + 1) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].internship.startYear',
+        `the internship must begin no later than the tax year after degree ` +
+          `completion ("תחל לא יאוחר משנת המס שלאחר", addendum §4) — ` +
+          `at latest ${completionYear + 1}, got ${internship.startYear}`,
+      );
+    }
+    if (internship.endYear < internship.startYear) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].internship.endYear',
+        `must not precede startYear, got ${internship.endYear} < ${internship.startYear}`,
+      );
+    }
+    if (internship.endYear < completionYear) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].internship.endYear',
+        `must not precede the degree completion year — a deferral cannot move ` +
+          `the benefit start earlier, got ${internship.endYear} < ${completionYear}`,
+      );
+    }
+  }
+
+  // Presence of `internship` = the taxpayer ELECTS the internship-based
+  // start: the window (2023+) / candidate years (2014-2022) run from the
+  // year after the internship ended instead of the year after completion.
+  // source: addendum §4 (form119-2024 §6).
+  const base = internship?.endYear ?? completionYear;
+  const deferralSuffix =
+    internship === undefined ? '' : ` (נדחה לאחר התמחות שהסתיימה ב-${internship.endYear})`;
   const { name, points } = TRACK_LABELS[track];
 
   if (completionYear >= 2023) {
@@ -130,7 +188,7 @@ export function degreeTwelfthsForTaxYear(
           `(addendum §6-verdict), got ${electedClaimYear}`,
       );
     }
-    const windowStart = completionYear + 1;
+    const windowStart = base + 1;
     const windowLength = Math.min(studyYears, trackRule.capYears);
     const windowEnd = windowStart + windowLength - 1;
     if (taxYear < windowStart || taxYear > windowEnd) {
@@ -139,7 +197,9 @@ export function degreeTwelfthsForTaxYear(
     const yearIndex = taxYear - windowStart + 1;
     return {
       twelfths: trackRule.twelfthsPerYear,
-      label: `${name} — ${points}, שנה ${yearIndex} מתוך ${windowLength} (סיום לימודים ${completionYear})`,
+      label:
+        `${name} — ${points}, שנה ${yearIndex} מתוך ${windowLength} ` +
+        `(סיום לימודים ${completionYear})${deferralSuffix}`,
     };
   }
 
@@ -154,12 +214,13 @@ export function degreeTwelfthsForTaxYear(
         `single benefit year ("לפי בחירתו", addendum §1/§2/§3)`,
     );
   }
-  const candidates = [completionYear + 1, completionYear + 2];
+  const candidates = [base + 1, base + 2];
   if (!candidates.includes(electedClaimYear)) {
     throw new InvalidTaxInputError(
       'taxpayer.degrees[].electedClaimYear',
       `must be one of the two candidate years ${candidates.join(' / ')} ` +
-        `(the tax year after completion or the following year), got ${electedClaimYear}`,
+        `(the tax year after completion/internship or the following year), ` +
+        `got ${electedClaimYear}`,
     );
   }
   if (taxYear !== electedClaimYear) {
@@ -167,6 +228,6 @@ export function degreeTwelfthsForTaxYear(
   }
   return {
     twelfths: trackRule.twelfthsPerYear,
-    label: `${name} — ${points} (שנת מס נבחרת ${electedClaimYear})`,
+    label: `${name} — ${points} (שנת מס נבחרת ${electedClaimYear})${deferralSuffix}`,
   };
 }
