@@ -548,6 +548,30 @@ describe('WorksheetPanel', () => {
     expect(screen.queryByText('החישוב נכשל')).toBeNull();
   });
 
+  it('clears a stale server error when a later submit fails client-side validation', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    const serverMessage =
+      'נקודות זיכוי בגין ילד בגיל 7 אינן נתמכות עדיין — יש להזין ידנית בשדה הנקודות הנוספות';
+    vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(400, serverMessage));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+    await screen.findByText(serverMessage);
+
+    // A Zod-shape failure returns before mutate(); the old engine error must
+    // not linger next to the new client-side message.
+    await user.type(screen.getByLabelText('נקודות זיכוי נוספות'), '0.3');
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    expect(
+      await screen.findByText(
+        'נקודות הזיכוי הנוספות חייבות להיות מספר לא שלילי בכפולות של 0.25',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(serverMessage)).toBeNull();
+  });
+
   it('falls back to the generic error when an ApiError carries no usable message', async () => {
     vi.mocked(getCalculation).mockResolvedValue(null);
     vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(502, ''));

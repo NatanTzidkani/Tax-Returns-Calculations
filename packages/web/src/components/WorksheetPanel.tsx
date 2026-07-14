@@ -341,6 +341,10 @@ function TaxpayerForm({
           break;
         }
       }
+      // Drop any previous server error so two alerts never stack (the Zod
+      // failure returns before mutate(), which would otherwise leave the old
+      // engine message on screen).
+      mutation.reset();
       setInvalid(section);
       return;
     }
