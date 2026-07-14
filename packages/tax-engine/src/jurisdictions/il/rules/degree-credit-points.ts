@@ -89,7 +89,7 @@ export function degreeTwelfthsForTaxYear(
   degree: DegreeInput,
   taxYear: number,
 ): { twelfths: number; label: string } {
-  const { track, completionYear, studyYears } = degree;
+  const { track, completionYear, studyYears, electedClaimYear } = degree;
 
   const trackRule = DEGREE_TRACKS[track];
   if (trackRule === undefined) {
@@ -121,7 +121,15 @@ export function degreeTwelfthsForTaxYear(
     // §1/§2/§3 (form119-2024 §§1,2,5) — 2023+ regime: FIXED consecutive
     // window "החל משנת המס שלאחר שנת המס שבה הסתיימו לימודיו", running
     // min(studyYears, capYears) tax years. No year election exists in this
-    // regime.
+    // regime, so a supplied electedClaimYear is contradictory input.
+    if (electedClaimYear !== undefined) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees[].electedClaimYear',
+        `must not be supplied for a 2023+ completion — the 2023+ claim window ` +
+          `is fixed, the year election belongs to the 2014-2022 cohort only ` +
+          `(addendum §6-verdict), got ${electedClaimYear}`,
+      );
+    }
     const windowStart = completionYear + 1;
     const windowLength = Math.min(studyYears, trackRule.capYears);
     const windowEnd = windowStart + windowLength - 1;
@@ -135,9 +143,30 @@ export function degreeTwelfthsForTaxYear(
     };
   }
 
-  // 2014-2022 elective cohort — implemented in the next increment step.
-  throw new InvalidTaxInputError(
-    'taxpayer.degrees[].completionYear',
-    `the 2014-2022 elective cohort is not implemented yet, got ${completionYear}`,
-  );
+  // source: docs/superpowers/research/2026-07-13-degrees-40g-addendum.md
+  // §1/§2/§3 (form119-2024 §§1,2,5) — 2014-2022 cohort: a SINGLE benefit
+  // year, "בשנת המס שלאחר שנת סיום התואר או בשנת המס שלאחריה, לפי בחירתו".
+  // The election is the taxpayer's — the engine never picks a year for them.
+  if (electedClaimYear === undefined) {
+    throw new InvalidTaxInputError(
+      'taxpayer.degrees[].electedClaimYear',
+      `required for a 2014-2022 completion — the taxpayer must elect the ` +
+        `single benefit year ("לפי בחירתו", addendum §1/§2/§3)`,
+    );
+  }
+  const candidates = [completionYear + 1, completionYear + 2];
+  if (!candidates.includes(electedClaimYear)) {
+    throw new InvalidTaxInputError(
+      'taxpayer.degrees[].electedClaimYear',
+      `must be one of the two candidate years ${candidates.join(' / ')} ` +
+        `(the tax year after completion or the following year), got ${electedClaimYear}`,
+    );
+  }
+  if (taxYear !== electedClaimYear) {
+    return { twelfths: 0, label: '' };
+  }
+  return {
+    twelfths: trackRule.twelfthsPerYear,
+    label: `${name} — ${points} (שנת מס נבחרת ${electedClaimYear})`,
+  };
 }

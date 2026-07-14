@@ -111,3 +111,56 @@ describe('degreeTwelfthsForTaxYear — 2023+ fixed window (addendum §1/§2/§3)
     ).toThrow(InvalidTaxInputError);
   });
 });
+
+describe('degreeTwelfthsForTaxYear — 2014-2022 elective year (addendum §1/§2/§3, "לפי בחירתו")', () => {
+  it('bachelor 2022 elected 2024 → 12 twelfths in 2024 only', () => {
+    const deg = bachelor({ completionYear: 2022, electedClaimYear: 2024 });
+    expect(degreeTwelfthsForTaxYear(deg, 2024).twelfths).toBe(12);
+    expect(degreeTwelfthsForTaxYear(deg, 2023).twelfths).toBe(0);
+    expect(degreeTwelfthsForTaxYear(deg, 2025).twelfths).toBe(0);
+  });
+
+  it('master 2020 elected 2021 → 6 twelfths in 2021, nothing in 2024 (history entry, 0 not throw)', () => {
+    const deg: DegreeInput = {
+      track: 'master',
+      completionYear: 2020,
+      studyYears: 2,
+      electedClaimYear: 2021,
+    };
+    expect(degreeTwelfthsForTaxYear(deg, 2021).twelfths).toBe(6);
+    // A degree whose window has passed must NOT force the reviewer to strip
+    // the entry from the profile — it simply contributes nothing in 2024.
+    expect(degreeTwelfthsForTaxYear(deg, 2024).twelfths).toBe(0);
+  });
+
+  it('labels the elected benefit year in Hebrew', () => {
+    expect(
+      degreeTwelfthsForTaxYear(
+        bachelor({ completionYear: 2022, electedClaimYear: 2024 }),
+        2024,
+      ).label,
+    ).toBe('תואר ראשון — נקודת זיכוי (שנת מס נבחרת 2024)');
+  });
+
+  it('throws when electedClaimYear is absent for a 2014-2022 completion (the election is required)', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(bachelor({ completionYear: 2022 }), 2024),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws when electedClaimYear is outside the two candidate years', () => {
+    // Candidates for a 2020 completion are 2021 and 2022 only.
+    expect(() =>
+      degreeTwelfthsForTaxYear(
+        bachelor({ completionYear: 2020, electedClaimYear: 2023 }),
+        2023,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws when electedClaimYear is supplied for a 2023+ completion (fixed regime — no election)', () => {
+    expect(() =>
+      degreeTwelfthsForTaxYear(bachelor({ electedClaimYear: 2024 }), 2024),
+    ).toThrow(InvalidTaxInputError);
+  });
+});
