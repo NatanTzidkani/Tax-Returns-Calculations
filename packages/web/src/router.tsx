@@ -95,10 +95,13 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({ component: RootL
 /** Redirects to `/sign-in` unless the me-query resolves a user. Shared by
  * every protected route's `beforeLoad`. */
 async function requireAuth({ context }: { context: RouterContext }) {
-  const user = await context.queryClient.ensureQueryData({
-    queryKey: authQueryKey,
-    queryFn: getMe,
-  });
+  // `.catch(() => null)` so a transient API failure (unreachable/500 — e.g. the
+  // api container restarting) falls back to the sign-in screen, where the user
+  // can retry, instead of bubbling to the router's generic "Something went
+  // wrong" error page. getMe already maps a 401 to null on its own.
+  const user = await context.queryClient
+    .ensureQueryData({ queryKey: authQueryKey, queryFn: getMe })
+    .catch(() => null);
   if (!user) {
     throw redirect({ to: '/sign-in' });
   }

@@ -23,6 +23,15 @@ describe('router auth guard', () => {
     expect(await screen.findByRole('heading', { name: 'התחברות' })).toBeTruthy();
   });
 
+  it('falls back to the sign-in screen (not a crash page) when the auth check errors', async () => {
+    // API unreachable / non-401 error — e.g. the api container restarting.
+    vi.mocked(getMe).mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+    await renderApp('/');
+
+    expect(await screen.findByRole('heading', { name: 'התחברות' })).toBeTruthy();
+  });
+
   it('sends the user to the sign-in screen after signing out (not just clearing the header)', async () => {
     vi.mocked(listTaxYears).mockResolvedValue([]);
     vi.mocked(signOut).mockResolvedValue(undefined);
