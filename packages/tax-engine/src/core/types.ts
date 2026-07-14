@@ -41,11 +41,28 @@ export interface TaxpayerInput {
   isIsraeliResident: boolean;
   gender: 'male' | 'female';
   /**
-   * Extra credit points beyond resident+gender (children, degree, oleh…),
-   * in units of 0.25. Their tables land in a later plan; until then the
-   * reviewer enters the verified total here.
+   * Extra credit points beyond what the engine computes (degrees, 6-17
+   * children, oleh clock-pausing…), in units of 0.25. Remains the reviewer's
+   * catch-all for every category not yet modelled.
    */
   additionalCreditPoints?: number;
+  /**
+   * Children for the §40 age→point table (report §1.1). The reviewer supplies
+   * each child's `role` explicitly — the engine does NOT decide who is
+   * custodial (parent allocation is deferred, report §1.2). Ages 6-17 are not
+   * yet owner-verified and throw; use `additionalCreditPoints` for them.
+   */
+  children?: Array<{ ageInTaxYear: number; role: 'custodial' | 'other' }>;
+  /**
+   * §35 oleh schedule input. `scheduleVariant` is an explicit reviewer input,
+   * NOT derived from the date — the pre-2022 cohort transition rule is still
+   * owner-verify (plan checklist). No clock-pausing is modelled.
+   */
+  aliyah?: {
+    aliyahYear: number;
+    aliyahMonth: number;
+    scheduleVariant: 'pre2022' | 'from2022';
+  };
 }
 
 /**
@@ -97,8 +114,11 @@ export interface IncomeTaxResult {
 }
 
 export interface CreditPointsBreakdownRow {
-  reason: 'resident' | 'female' | 'additional';
+  // 'degree' is intentionally NOT here yet — §40ג is deferred to its own plan.
+  reason: 'resident' | 'female' | 'additional' | 'child' | 'oleh';
   points: number;
+  /** Hebrew worksheet label saying WHY the points were granted (no black box). */
+  label?: string;
 }
 
 export interface CreditPointsResult {

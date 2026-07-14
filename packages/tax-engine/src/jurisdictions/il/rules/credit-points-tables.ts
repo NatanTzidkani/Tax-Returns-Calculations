@@ -160,3 +160,25 @@ export function olehTwelfthsForTaxYear(
   }
   return twelfths;
 }
+
+/**
+ * How many of the tax year's calendar months are qualifying §35 schedule
+ * months — used only for the worksheet label ("עולה חדש — N חודשים בשנת המס").
+ * Same month-indexing (and same input validation) as `olehTwelfthsForTaxYear`.
+ */
+export function olehQualifyingMonthsInTaxYear(
+  variant: OlehScheduleVariant,
+  aliyahYear: number,
+  aliyahMonth: number,
+  taxYear: number,
+): number {
+  // Validate through the twelfths helper so both stay loud and consistent.
+  olehTwelfthsForTaxYear(variant, aliyahYear, aliyahMonth, taxYear);
+  const bands = OLEH_SCHEDULES[variant];
+  let months = 0;
+  for (let m = 1; m <= 12; m += 1) {
+    const scheduleMonth = (taxYear - aliyahYear) * 12 + (m - aliyahMonth) + 1;
+    if (olehRateForScheduleMonth(bands, scheduleMonth) > 0) months += 1;
+  }
+  return months;
+}

@@ -63,4 +63,136 @@ describe('computeCreditPoints', () => {
       ),
     ).toThrow(InvalidTaxInputError);
   });
+
+  // Structured children/oleh inputs (report §1.1 / §3.1 via the rules module).
+
+  it('adds a child age 2 (4.5 pts) to a resident man → 6.75 points', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        children: [{ ageInTaxYear: 2, role: 'custodial' }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(6.75);
+    // 81 twelfths × 290,400/12 agorot
+    expect(res.valueAgorot).toBe(1_960_200);
+    expect(res.breakdown).toContainEqual({
+      reason: 'child',
+      points: 4.5,
+      label: 'ילד בן 2 (הורה משמורן)',
+    });
+  });
+
+  it('labels the other-parent role and a birth-year child', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        children: [
+          { ageInTaxYear: 3, role: 'other' },
+          { ageInTaxYear: 0, role: 'custodial' },
+        ],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(2.25 + 3.5 + 2.5);
+    expect(res.breakdown).toContainEqual({
+      reason: 'child',
+      points: 3.5,
+      label: 'ילד בן 3 (הורה אחר)',
+    });
+    expect(res.breakdown).toContainEqual({
+      reason: 'child',
+      points: 2.5,
+      label: 'ילד שנולד בשנת המס (הורה משמורן)',
+    });
+  });
+
+  it('a child in the not-yet-verified 6-17 band propagates the loud throw', () => {
+    // Delta from the plan: 6-17 ships DISABLED (secondary sources only) —
+    // a resident woman with a child age 6 role "other" throws instead of
+    // yielding 3.75 points.
+    expect(() =>
+      computeCreditPoints(
+        {
+          isIsraeliResident: true,
+          gender: 'female',
+          children: [{ ageInTaxYear: 6, role: 'other' }],
+        },
+        y2025,
+      ),
+    ).toThrow(/not yet owner-verified/);
+  });
+
+  it('a child age 19 propagates the loud out-of-range throw', () => {
+    expect(() =>
+      computeCreditPoints(
+        {
+          isIsraeliResident: true,
+          gender: 'male',
+          children: [{ ageInTaxYear: 19, role: 'custodial' }],
+        },
+        y2025,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('adds a from2022 oleh full first year (1/12×12 = 1 pt) → 3.25 points', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        aliyah: { aliyahYear: 2025, aliyahMonth: 1, scheduleVariant: 'from2022' },
+      },
+      y2025,
+    );
+    expect(res.points).toBe(3.25);
+    expect(res.valueAgorot).toBe(943_800); // 39 twelfths × 24,200
+    expect(res.breakdown).toContainEqual({
+      reason: 'oleh',
+      points: 1,
+      label: 'עולה חדש — 12 חודשים בשנת המס',
+    });
+  });
+
+  it('combined resident + child + mid-year oleh + additional 0.25 stays twelfth-integer', () => {
+    // 27 (resident) + 54 (child age 2) + 8 (from2022 aliyah 2025-05: schedule
+    // months 1-8 at 1/12) + 3 (additional 0.25) = 92 twelfths.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        additionalCreditPoints: 0.25,
+        children: [{ ageInTaxYear: 2, role: 'custodial' }],
+        aliyah: { aliyahYear: 2025, aliyahMonth: 5, scheduleVariant: 'from2022' },
+      },
+      y2025,
+    );
+    expect(res.points).toBe(92 / 12);
+    expect(res.valueAgorot).toBe(2_226_400); // 92 × 290,400 / 12 exactly
+    const reasons = res.breakdown.map((row) => row.reason);
+    expect(reasons).toContain('child');
+    expect(reasons).toContain('oleh');
+    expect(res.breakdown).toContainEqual({
+      reason: 'oleh',
+      points: 8 / 12,
+      label: 'עולה חדש — 8 חודשים בשנת המס',
+    });
+  });
+
+  it('an oleh year with zero qualifying months adds no row', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        // pre2022 aliyah Jan 2020 — the 42-month window ended before 2025.
+        aliyah: { aliyahYear: 2020, aliyahMonth: 1, scheduleVariant: 'pre2022' },
+      },
+      y2025,
+    );
+    expect(res.points).toBe(2.25);
+    expect(res.breakdown).toEqual([{ reason: 'resident', points: 2.25 }]);
+  });
 });
