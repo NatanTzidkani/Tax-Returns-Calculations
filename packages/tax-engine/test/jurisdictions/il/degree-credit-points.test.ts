@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidTaxInputError } from '../../../src/core/errors';
 import {
+  assertDegreeExclusivity,
   degreeTwelfthsForTaxYear,
   type DegreeInput,
 } from '../../../src/jurisdictions/il/rules/degree-credit-points';
@@ -256,5 +257,42 @@ describe('degreeTwelfthsForTaxYear — internship (התמחות) deferral, Form 
         2025,
       ),
     ).toThrow(InvalidTaxInputError);
+  });
+});
+
+describe('assertDegreeExclusivity — §7(ב)/§7(ג) (addendum §3 table)', () => {
+  const master: DegreeInput = { track: 'master', completionYear: 2023, studyYears: 2 };
+  const vocational: DegreeInput = {
+    track: 'vocational',
+    completionYear: 2023,
+    studyYears: 2,
+  };
+
+  it('throws on a duplicate track — §7(ב) one benefit per level', () => {
+    // Two bachelor's ⇒ still one benefit, per the form's own example.
+    expect(() =>
+      assertDegreeExclusivity([bachelor(), bachelor({ completionYear: 2024 })]),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws on vocational mixed with bachelor — §7(ג) degree XOR vocational', () => {
+    expect(() => assertDegreeExclusivity([vocational, bachelor()])).toThrow(
+      InvalidTaxInputError,
+    );
+  });
+
+  it('throws on vocational mixed with master — §7(ג)', () => {
+    expect(() => assertDegreeExclusivity([master, vocational])).toThrow(
+      InvalidTaxInputError,
+    );
+  });
+
+  it('accepts bachelor + master together (one benefit per LEVEL)', () => {
+    expect(() => assertDegreeExclusivity([bachelor(), master])).not.toThrow();
+  });
+
+  it('accepts a lone vocational certificate and an empty list', () => {
+    expect(() => assertDegreeExclusivity([vocational])).not.toThrow();
+    expect(() => assertDegreeExclusivity([])).not.toThrow();
   });
 });

@@ -79,6 +79,40 @@ const TRACK_LABELS: Readonly<Record<DegreeTrack, { name: string; points: string 
   });
 
 /**
+ * Fail-loud exclusivity check over the whole `degrees` array — call once
+ * before deriving any window. Contradictory combinations must never silently
+ * become a plausible number:
+ * - §7(ב) one benefit per level: at most one entry per track (two bachelor's
+ *   ⇒ still one benefit, per the form's own example).
+ * - §7(ג) degree XOR vocational: the taxpayer must CHOOSE between the degree
+ *   benefit and the vocational benefit; the engine does NOT pick the cheaper
+ *   option for them (that election is the reviewer's/taxpayer's).
+ * source: docs/superpowers/research/2026-07-13-degrees-40g-addendum.md §3
+ * table (form119-2024 §7(ב)/§7(ג)).
+ */
+export function assertDegreeExclusivity(degrees: readonly DegreeInput[]): void {
+  const seen = new Set<DegreeTrack>();
+  for (const { track } of degrees) {
+    if (seen.has(track)) {
+      throw new InvalidTaxInputError(
+        'taxpayer.degrees',
+        `duplicate track "${track}" — §7(ב) grants one benefit per level ` +
+          `(a second ${track} confers nothing; remove the duplicate entry)`,
+      );
+    }
+    seen.add(track);
+  }
+  if (seen.has('vocational') && (seen.has('bachelor') || seen.has('master'))) {
+    throw new InvalidTaxInputError(
+      'taxpayer.degrees',
+      `"vocational" cannot be combined with "bachelor"/"master" — §7(ג) ` +
+        `requires choosing between the degree benefit and the vocational ` +
+        `benefit; the taxpayer must elect one (the engine never chooses)`,
+    );
+  }
+}
+
+/**
  * Twelfths of a point this degree/certificate contributes in `taxYear`, plus
  * the Hebrew worksheet label. A degree whose claim window does not include
  * `taxYear` yields `{ twelfths: 0 }` (education history is valid input for
