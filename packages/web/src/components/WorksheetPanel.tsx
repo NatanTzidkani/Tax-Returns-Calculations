@@ -42,6 +42,14 @@ const primaryButtonClasses =
   'focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50 ' +
   'dark:bg-blue-600 dark:hover:bg-blue-500';
 
+const secondaryButtonClasses =
+  'inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm ' +
+  'font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 focus-visible:outline ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ' +
+  'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800';
+
+const checkboxClasses = 'size-4 accent-blue-700 dark:accent-blue-500';
+
 const alertClasses =
   'rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 ' +
   'dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300';
@@ -92,6 +100,60 @@ function optionalShekelsToAgorot(value: string): number | undefined {
     return Number.NaN;
   }
 }
+
+/**
+ * A required integer entry → number for the shared Zod gate. Blank becomes
+ * NaN (never a silent 0 — `Number('') === 0`) so `z.number().int()` rejects
+ * it and the form shows the localized section message instead of submitting.
+ */
+function requiredInt(value: string): number {
+  const trimmed = value.trim();
+  if (trimmed === '') return Number.NaN;
+  return Number(trimmed);
+}
+
+/**
+ * The elected-claim-year input is shown only for completion years ≤ 2022
+ * (the 2014-2022 cohort's single-elective rule). This is a DISPLAY
+ * convenience only — the value is sent verbatim and the ENGINE remains the
+ * validator of the cohort rules (plan:
+ * docs/superpowers/plans/2026-07-14-credit-points-wiring.md).
+ */
+function electedYearVisible(completionYear: string): boolean {
+  const trimmed = completionYear.trim();
+  if (trimmed === '') return false;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed <= 2022;
+}
+
+/** Worksheet-form row state (strings: controlled inputs, parsed on submit). */
+interface ChildRow {
+  age: string;
+  role: 'custodial' | 'other';
+}
+
+interface DegreeRow {
+  track: 'bachelor' | 'master' | 'vocational';
+  completionYear: string;
+  studyYears: string;
+  electedClaimYear: string;
+  internship: boolean;
+  internshipStart: string;
+  internshipEnd: string;
+}
+
+const CHILD_AGES = Array.from({ length: 19 }, (_, age) => age);
+const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
+
+type InvalidSection = 'points' | 'interest' | 'children' | 'aliyah' | 'degrees';
+
+const invalidMessageKeys: Record<InvalidSection, string> = {
+  points: 'worksheet.invalidPoints',
+  interest: 'worksheet.invalidInterest',
+  children: 'worksheet.invalidChildren',
+  aliyah: 'worksheet.invalidAliyah',
+  degrees: 'worksheet.invalidDegrees',
+};
 
 function MoneyRow({ label, value }: { label: string; value: Agorot }) {
   return (
@@ -170,7 +232,13 @@ function TaxpayerForm({
   const [additionalPoints, setAdditionalPoints] = useState('');
   const [interest, setInterest] = useState('');
   const [interestWithheld, setInterestWithheld] = useState('');
-  const [invalid, setInvalid] = useState<'points' | 'interest' | null>(null);
+  const [children, setChildren] = useState<ChildRow[]>([]);
+  const [aliyahOn, setAliyahOn] = useState(false);
+  const [aliyahYear, setAliyahYear] = useState('');
+  const [aliyahMonth, setAliyahMonth] = useState('1');
+  const [aliyahVariant, setAliyahVariant] = useState<'pre2022' | 'from2022'>('from2022');
+  const [degrees, setDegrees] = useState<DegreeRow[]>([]);
+  const [invalid, setInvalid] = useState<InvalidSection | null>(null);
   const mutation = useMutation({
     mutationFn: (body: CalculateRequestBody) => calculateTaxYear(taxYearId, body),
     onSuccess: async (response) => {
@@ -180,6 +248,14 @@ function TaxpayerForm({
       await queryClient.invalidateQueries({ queryKey: ['tax-years'] });
     },
   });
+
+  function updateChild(index: number, patch: Partial<ChildRow>) {
+    setChildren((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function updateDegree(index: number, patch: Partial<DegreeRow>) {
+    setDegrees((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -191,6 +267,48 @@ function TaxpayerForm({
         gender,
         additionalCreditPoints:
           additionalPoints.trim() === '' ? 0 : Number(additionalPoints),
+        // Empty/off sections OMIT their key entirely — the engine
+        // distinguishes `undefined` (not supplied) from `[]`.
+        ...(children.length > 0
+          ? {
+              children: children.map((child) => ({
+                ageInTaxYear: Number(child.age),
+                role: child.role,
+              })),
+            }
+          : {}),
+        ...(aliyahOn
+          ? {
+              aliyah: {
+                aliyahYear: requiredInt(aliyahYear),
+                aliyahMonth: Number(aliyahMonth),
+                scheduleVariant: aliyahVariant,
+              },
+            }
+          : {}),
+        ...(degrees.length > 0
+          ? {
+              degrees: degrees.map((degree) => ({
+                track: degree.track,
+                completionYear: requiredInt(degree.completionYear),
+                studyYears: requiredInt(degree.studyYears),
+                // Hidden (2023+) or blank elected year → omit; the visible
+                // value is sent verbatim — the engine validates the cohort.
+                ...(electedYearVisible(degree.completionYear) &&
+                degree.electedClaimYear.trim() !== ''
+                  ? { electedClaimYear: requiredInt(degree.electedClaimYear) }
+                  : {}),
+                ...(degree.internship
+                  ? {
+                      internship: {
+                        startYear: requiredInt(degree.internshipStart),
+                        endYear: requiredInt(degree.internshipEnd),
+                      },
+                    }
+                  : {}),
+              })),
+            }
+          : {}),
       },
       // Blank → omit so absent means 0 (unchanged behavior).
       ...(nonLinkedInterestAgorot !== undefined ? { nonLinkedInterestAgorot } : {}),
@@ -198,13 +316,32 @@ function TaxpayerForm({
         ? { nonLinkedInterestWithheldAgorot }
         : {}),
     };
-    // The shared schema is the single source of truth for validity.
+    // The shared schema is the single source of truth for validity. On a
+    // shape failure, point the Hebrew message at the offending section.
     const parsed = CalculateRequestSchema.safeParse(body);
     if (!parsed.success) {
-      const onInterest = parsed.error.issues.some((issue) =>
-        String(issue.path[0] ?? '').startsWith('nonLinkedInterest'),
-      );
-      setInvalid(onInterest ? 'interest' : 'points');
+      let section: InvalidSection = 'points';
+      for (const issue of parsed.error.issues) {
+        const head = issue.path[0];
+        const second = issue.path[1];
+        if (head === 'taxpayer' && second === 'children') {
+          section = 'children';
+          break;
+        }
+        if (head === 'taxpayer' && second === 'aliyah') {
+          section = 'aliyah';
+          break;
+        }
+        if (head === 'taxpayer' && second === 'degrees') {
+          section = 'degrees';
+          break;
+        }
+        if (String(head ?? '').startsWith('nonLinkedInterest')) {
+          section = 'interest';
+          break;
+        }
+      }
+      setInvalid(section);
       return;
     }
     setInvalid(null);
@@ -282,20 +419,318 @@ function TaxpayerForm({
             className={`${fieldClasses} w-36`}
           />
         </div>
+      </div>
+      <p className={mutedTextClasses}>{t('worksheet.additionalPointsHelp')}</p>
+      <p className={mutedTextClasses}>{t('worksheet.nonLinkedInterestInputHelp')}</p>
+
+      {/* Children (§40): dynamic rows — age in the tax year + parent role. */}
+      <div className="flex flex-col gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+        <h3 className={sectionHeadingClasses}>{t('worksheet.childrenTitle')}</h3>
+        {children.map((child, index) => (
+          // Index keys are safe: rows are fully controlled from state.
+          <div key={index} className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label.Root htmlFor={`worksheet-child-${index}-age`} className={labelClasses}>
+                {t('worksheet.childAgeLabel')}
+              </Label.Root>
+              <select
+                id={`worksheet-child-${index}-age`}
+                value={child.age}
+                onChange={(event) => updateChild(index, { age: event.target.value })}
+                className={`${fieldClasses} w-24`}
+              >
+                {CHILD_AGES.map((age) => (
+                  <option key={age} value={String(age)}>
+                    {age}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label.Root htmlFor={`worksheet-child-${index}-role`} className={labelClasses}>
+                {t('worksheet.childRoleLabel')}
+              </Label.Root>
+              <select
+                id={`worksheet-child-${index}-role`}
+                value={child.role}
+                onChange={(event) =>
+                  updateChild(index, { role: event.target.value as 'custodial' | 'other' })
+                }
+                className={fieldClasses}
+              >
+                <option value="custodial">{t('worksheet.childRoleCustodial')}</option>
+                <option value="other">{t('worksheet.childRoleOther')}</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => setChildren((rows) => rows.filter((_, i) => i !== index))}
+              className={secondaryButtonClasses}
+            >
+              {t('worksheet.removeChild')}
+            </button>
+          </div>
+        ))}
+        <div>
+          <button
+            type="button"
+            onClick={() =>
+              setChildren((rows) => [...rows, { age: '0', role: 'custodial' }])
+            }
+            className={secondaryButtonClasses}
+          >
+            {t('worksheet.addChild')}
+          </button>
+        </div>
+        <p className={mutedTextClasses}>{t('worksheet.childrenHelp')}</p>
+      </div>
+
+      {/* Oleh (§35): an optional toggled record — year, month, schedule. */}
+      <div className="flex flex-col gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+        <div className="flex items-center gap-2">
+          <input
+            id="worksheet-aliyah-toggle"
+            type="checkbox"
+            checked={aliyahOn}
+            onChange={(event) => setAliyahOn(event.target.checked)}
+            className={checkboxClasses}
+          />
+          <Label.Root htmlFor="worksheet-aliyah-toggle" className={labelClasses}>
+            {t('worksheet.aliyahToggle')}
+          </Label.Root>
+        </div>
+        {aliyahOn ? (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label.Root htmlFor="worksheet-aliyah-year" className={labelClasses}>
+                {t('worksheet.aliyahYearLabel')}
+              </Label.Root>
+              <input
+                id="worksheet-aliyah-year"
+                type="number"
+                inputMode="numeric"
+                value={aliyahYear}
+                onChange={(event) => setAliyahYear(event.target.value)}
+                className={`${fieldClasses} w-28`}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label.Root htmlFor="worksheet-aliyah-month" className={labelClasses}>
+                {t('worksheet.aliyahMonthLabel')}
+              </Label.Root>
+              <select
+                id="worksheet-aliyah-month"
+                value={aliyahMonth}
+                onChange={(event) => setAliyahMonth(event.target.value)}
+                className={`${fieldClasses} w-24`}
+              >
+                {MONTHS.map((month) => (
+                  <option key={month} value={String(month)}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label.Root htmlFor="worksheet-aliyah-variant" className={labelClasses}>
+                {t('worksheet.aliyahVariantLabel')}
+              </Label.Root>
+              <select
+                id="worksheet-aliyah-variant"
+                value={aliyahVariant}
+                onChange={(event) =>
+                  setAliyahVariant(event.target.value as 'pre2022' | 'from2022')
+                }
+                className={fieldClasses}
+              >
+                <option value="pre2022">{t('worksheet.aliyahVariantPre2022')}</option>
+                <option value="from2022">{t('worksheet.aliyahVariantFrom2022')}</option>
+              </select>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Degrees (§40ג-§40ה): dynamic rows — track, years, elective, internship. */}
+      <div className="flex flex-col gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+        <h3 className={sectionHeadingClasses}>{t('worksheet.degreesTitle')}</h3>
+        {degrees.map((degree, index) => (
+          <div
+            key={index}
+            className="flex flex-col gap-2 rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+          >
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label.Root htmlFor={`worksheet-degree-${index}-track`} className={labelClasses}>
+                  {t('worksheet.degreeTrackLabel')}
+                </Label.Root>
+                <select
+                  id={`worksheet-degree-${index}-track`}
+                  value={degree.track}
+                  onChange={(event) =>
+                    updateDegree(index, {
+                      track: event.target.value as DegreeRow['track'],
+                    })
+                  }
+                  className={fieldClasses}
+                >
+                  <option value="bachelor">{t('worksheet.degreeTrackBachelor')}</option>
+                  <option value="master">{t('worksheet.degreeTrackMaster')}</option>
+                  <option value="vocational">{t('worksheet.degreeTrackVocational')}</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label.Root
+                  htmlFor={`worksheet-degree-${index}-completion`}
+                  className={labelClasses}
+                >
+                  {t('worksheet.degreeCompletionYearLabel')}
+                </Label.Root>
+                <input
+                  id={`worksheet-degree-${index}-completion`}
+                  type="number"
+                  inputMode="numeric"
+                  value={degree.completionYear}
+                  onChange={(event) =>
+                    updateDegree(index, { completionYear: event.target.value })
+                  }
+                  className={`${fieldClasses} w-28`}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label.Root
+                  htmlFor={`worksheet-degree-${index}-study-years`}
+                  className={labelClasses}
+                >
+                  {t('worksheet.degreeStudyYearsLabel')}
+                </Label.Root>
+                <input
+                  id={`worksheet-degree-${index}-study-years`}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={degree.studyYears}
+                  onChange={(event) => updateDegree(index, { studyYears: event.target.value })}
+                  className={`${fieldClasses} w-24`}
+                />
+              </div>
+              {electedYearVisible(degree.completionYear) ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label.Root
+                    htmlFor={`worksheet-degree-${index}-elected`}
+                    className={labelClasses}
+                  >
+                    {t('worksheet.degreeElectedYearLabel')}
+                  </Label.Root>
+                  <input
+                    id={`worksheet-degree-${index}-elected`}
+                    type="number"
+                    inputMode="numeric"
+                    value={degree.electedClaimYear}
+                    onChange={(event) =>
+                      updateDegree(index, { electedClaimYear: event.target.value })
+                    }
+                    className={`${fieldClasses} w-28`}
+                  />
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setDegrees((rows) => rows.filter((_, i) => i !== index))}
+                className={secondaryButtonClasses}
+              >
+                {t('worksheet.removeDegree')}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id={`worksheet-degree-${index}-internship`}
+                type="checkbox"
+                checked={degree.internship}
+                onChange={(event) => updateDegree(index, { internship: event.target.checked })}
+                className={checkboxClasses}
+              />
+              <Label.Root
+                htmlFor={`worksheet-degree-${index}-internship`}
+                className={labelClasses}
+              >
+                {t('worksheet.degreeInternshipToggle')}
+              </Label.Root>
+            </div>
+            {degree.internship ? (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label.Root
+                    htmlFor={`worksheet-degree-${index}-internship-start`}
+                    className={labelClasses}
+                  >
+                    {t('worksheet.degreeInternshipStartLabel')}
+                  </Label.Root>
+                  <input
+                    id={`worksheet-degree-${index}-internship-start`}
+                    type="number"
+                    inputMode="numeric"
+                    value={degree.internshipStart}
+                    onChange={(event) =>
+                      updateDegree(index, { internshipStart: event.target.value })
+                    }
+                    className={`${fieldClasses} w-28`}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label.Root
+                    htmlFor={`worksheet-degree-${index}-internship-end`}
+                    className={labelClasses}
+                  >
+                    {t('worksheet.degreeInternshipEndLabel')}
+                  </Label.Root>
+                  <input
+                    id={`worksheet-degree-${index}-internship-end`}
+                    type="number"
+                    inputMode="numeric"
+                    value={degree.internshipEnd}
+                    onChange={(event) =>
+                      updateDegree(index, { internshipEnd: event.target.value })
+                    }
+                    className={`${fieldClasses} w-28`}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ))}
+        <div>
+          <button
+            type="button"
+            onClick={() =>
+              setDegrees((rows) => [
+                ...rows,
+                {
+                  track: 'bachelor',
+                  completionYear: '',
+                  studyYears: '',
+                  electedClaimYear: '',
+                  internship: false,
+                  internshipStart: '',
+                  internshipEnd: '',
+                },
+              ])
+            }
+            className={secondaryButtonClasses}
+          >
+            {t('worksheet.addDegree')}
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-neutral-200 pt-3 dark:border-neutral-800">
         <button type="submit" disabled={mutation.isPending} className={primaryButtonClasses}>
           {t('worksheet.calculateButton')}
         </button>
       </div>
-      <p className={mutedTextClasses}>{t('worksheet.additionalPointsHelp')}</p>
-      <p className={mutedTextClasses}>{t('worksheet.nonLinkedInterestInputHelp')}</p>
-      {invalid === 'points' ? (
+      {invalid !== null ? (
         <p role="alert" className={alertClasses}>
-          {t('worksheet.invalidPoints')}
-        </p>
-      ) : null}
-      {invalid === 'interest' ? (
-        <p role="alert" className={alertClasses}>
-          {t('worksheet.invalidInterest')}
+          {t(invalidMessageKeys[invalid])}
         </p>
       ) : null}
       {mutation.isError ? (

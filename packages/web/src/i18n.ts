@@ -138,10 +138,47 @@ export const resources = {
         genderFemale: 'נקבה',
         additionalPointsLabel: 'נקודות זיכוי נוספות',
         additionalPointsHelp:
-          'נקודות בגין ילדים, תואר אקדמי או עולה חדש — עד שייבנו הטבלאות, מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
+          'השדות המובנים למטה מכסים ילדים (גילאי 0-5 ו-18), עולה חדש ותואר ראשון/שני/תעודת מקצוע. שדה זה נותר לכל השאר — ילדים בגילאי 6-17, חלוקת נקודות בין הורים, מסלולי דוקטורט וסיום לימודים לפני 2014 — מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
         calculateButton: 'חישוב',
         invalidPoints:
           'נקודות הזיכוי הנוספות חייבות להיות מספר לא שלילי בכפולות של 0.25',
+        // --- Structured credit-point inputs (children §40 / oleh §35 /
+        // degrees §40ג-§40ה). The shared Zod schema owns the SHAPE; the
+        // engine owns the LAW and its Hebrew errors surface in the form.
+        childrenTitle: 'ילדים (סעיף 40)',
+        childAgeLabel: 'גיל בשנת המס',
+        childRoleLabel: 'תפקיד ההורה',
+        childRoleCustodial: 'הורה משמורן',
+        childRoleOther: 'הורה אחר',
+        addChild: 'הוספת ילד',
+        removeChild: 'הסרת ילד',
+        childrenHelp:
+          'ילדים בגילאי 6-17 אינם נתמכים עדיין בחישוב האוטומטי — יש להזין את הנקודות בגינם בשדה "נקודות זיכוי נוספות". גיל בטווח זה יידחה על ידי מנוע החישוב עם הודעת שגיאה.',
+        invalidChildren:
+          'פרטי הילדים אינם תקינים — יש לבדוק את הגיל ואת תפקיד ההורה בכל שורה.',
+        aliyahToggle: 'עלייה לישראל (סעיף 35)',
+        aliyahYearLabel: 'שנת העלייה',
+        aliyahMonthLabel: 'חודש העלייה',
+        aliyahVariantLabel: 'מסלול הזיכוי',
+        aliyahVariantPre2022: 'עלייה לפני 1.1.2022',
+        aliyahVariantFrom2022: 'עלייה מ-1.1.2022',
+        invalidAliyah:
+          'פרטי העלייה אינם תקינים — יש להזין שנת עלייה (מספר שלם), חודש ומסלול.',
+        degreesTitle: 'תארים ותעודות מקצוע (סעיפים 40ג-40ה)',
+        degreeTrackLabel: 'מסלול',
+        degreeTrackBachelor: 'תואר ראשון',
+        degreeTrackMaster: 'תואר שני',
+        degreeTrackVocational: 'תעודת מקצוע',
+        degreeCompletionYearLabel: 'שנת סיום הלימודים',
+        degreeStudyYearsLabel: 'שנות הלימוד',
+        degreeElectedYearLabel: 'שנת הזיכוי שנבחרה',
+        degreeInternshipToggle: 'התמחות (טופס 119)',
+        degreeInternshipStartLabel: 'שנת תחילת ההתמחות',
+        degreeInternshipEndLabel: 'שנת סיום ההתמחות',
+        addDegree: 'הוספת תואר',
+        removeDegree: 'הסרת תואר',
+        invalidDegrees:
+          'פרטי התארים אינם תקינים — יש לבדוק שנת סיום, שנות לימוד, שנת זיכוי ושנות התמחות.',
         nonLinkedInterestInputLabel:
           'הכנסת ריבית על נכס שאינו צמוד מדד (15%) (₪)',
         nonLinkedInterestWithheldInputLabel: 'ניכוי במקור על הריבית (₪)',

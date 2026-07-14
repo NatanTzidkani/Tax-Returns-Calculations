@@ -144,6 +144,20 @@ function makeCalculation(
   };
 }
 
+/** A successful calculate response wrapping the default fixture result. */
+function makeResponse(): CalculateResponse {
+  const calculated = makeCalculation();
+  return {
+    id: calculated.id,
+    taxYearId: calculated.taxYearId,
+    engineVersion: calculated.engineVersion,
+    input: calculated.input,
+    result: calculated.result,
+    createdAt: calculated.createdAt,
+    metadata: { excludedDonations: 0 },
+  };
+}
+
 // formatILS output contains non-breaking/direction marks; Testing Library
 // hands matchers whitespace-normalized text, so normalize both sides.
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -555,6 +569,225 @@ describe('WorksheetPanel', () => {
 
     expect(await screen.findByText('החישוב נכשל')).toBeTruthy();
     expect(screen.queryByText('fetch failed')).toBeNull();
+  });
+
+  it('adds and removes child rows and POSTs the remaining structured children', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // The 6-17 help note is visible under the children section.
+    expect(
+      await screen.findByText((c) => normalize(c).includes('ילדים בגילאי 6-17 אינם נתמכים עדיין')),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+
+    const ages = screen.getAllByLabelText('גיל בשנת המס');
+    expect(ages).toHaveLength(3);
+    await user.selectOptions(ages[0]!, '2');
+    await user.selectOptions(ages[1]!, '4');
+    await user.selectOptions(ages[2]!, '18');
+    const roles = screen.getAllByLabelText('תפקיד ההורה');
+    await user.selectOptions(roles[1]!, 'other');
+
+    // Removing the last row leaves the first two intact.
+    await user.click(screen.getAllByRole('button', { name: 'הסרת ילד' })[2]!);
+    expect(screen.getAllByLabelText('גיל בשנת המס')).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            children: [
+              { ageInTaxYear: 2, role: 'custodial' },
+              { ageInTaxYear: 4, role: 'other' },
+            ],
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('toggles the aliyah section and POSTs the structured aliyah record', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // Off by default: no aliyah detail inputs.
+    expect(await screen.findByLabelText('עלייה לישראל (סעיף 35)')).toBeTruthy();
+    expect(screen.queryByLabelText('שנת העלייה')).toBeNull();
+
+    await user.click(screen.getByLabelText('עלייה לישראל (סעיף 35)'));
+    await user.type(screen.getByLabelText('שנת העלייה'), '2024');
+    await user.selectOptions(screen.getByLabelText('חודש העלייה'), '7');
+    await user.selectOptions(
+      screen.getByLabelText('מסלול הזיכוי'),
+      'from2022',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            aliyah: { aliyahYear: 2024, aliyahMonth: 7, scheduleVariant: 'from2022' },
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('POSTs degrees with elected year and internship; elected year shows only for completions ≤ 2022', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByRole('button', { name: 'הוספת תואר' }));
+
+    // Blank completion year → the elected-year input is hidden.
+    expect(screen.queryByLabelText('שנת הזיכוי שנבחרה')).toBeNull();
+    // 2023+ cohort → still hidden (display convenience; the engine validates).
+    await user.type(screen.getByLabelText('שנת סיום הלימודים'), '2023');
+    expect(screen.queryByLabelText('שנת הזיכוי שנבחרה')).toBeNull();
+    // ≤ 2022 cohort → visible.
+    await user.clear(screen.getByLabelText('שנת סיום הלימודים'));
+    await user.type(screen.getByLabelText('שנת סיום הלימודים'), '2020');
+    expect(screen.getByLabelText('שנת הזיכוי שנבחרה')).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText('מסלול'), 'master');
+    await user.type(screen.getByLabelText('שנות הלימוד'), '3');
+    await user.type(screen.getByLabelText('שנת הזיכוי שנבחרה'), '2022');
+
+    // The internship toggle reveals the start/end year inputs.
+    expect(screen.queryByLabelText('שנת תחילת ההתמחות')).toBeNull();
+    await user.click(screen.getByLabelText('התמחות (טופס 119)'));
+    await user.type(screen.getByLabelText('שנת תחילת ההתמחות'), '2020');
+    await user.type(screen.getByLabelText('שנת סיום ההתמחות'), '2021');
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            degrees: [
+              {
+                track: 'master',
+                completionYear: 2020,
+                studyYears: 3,
+                electedClaimYear: 2022,
+                internship: { startYear: 2020, endYear: 2021 },
+              },
+            ],
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('omits children/aliyah/degrees keys entirely when sections are removed or off', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // Touch every section, then undo: add+remove a child, toggle aliyah
+    // on+off, add+remove a degree.
+    await user.click(await screen.findByRole('button', { name: 'הוספת ילד' }));
+    await user.click(screen.getByRole('button', { name: 'הסרת ילד' }));
+    await user.click(screen.getByLabelText('עלייה לישראל (סעיף 35)'));
+    await user.type(screen.getByLabelText('שנת העלייה'), '2024');
+    await user.click(screen.getByLabelText('עלייה לישראל (סעיף 35)'));
+    await user.click(screen.getByRole('button', { name: 'הוספת תואר' }));
+    await user.click(screen.getByRole('button', { name: 'הסרת תואר' }));
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(() => expect(calculateTaxYear).toHaveBeenCalled(), {
+      timeout: 10_000,
+    });
+
+    // `toHaveBeenCalledWith` ignores explicit-undefined keys, so assert key
+    // ABSENCE directly — the engine distinguishes `undefined` from `[]`.
+    const body = vi.mocked(calculateTaxYear).mock.calls[0]![1];
+    expect('children' in body.taxpayer).toBe(false);
+    expect('aliyah' in body.taxpayer).toBe(false);
+    expect('degrees' in body.taxpayer).toBe(false);
+  });
+
+  it('shows a Hebrew aliyah message and does not POST when the aliyah year is blank', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByLabelText('עלייה לישראל (סעיף 35)'));
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    expect(
+      await screen.findByText(
+        'פרטי העלייה אינם תקינים — יש להזין שנת עלייה (מספר שלם), חודש ומסלול.',
+      ),
+    ).toBeTruthy();
+    expect(calculateTaxYear).not.toHaveBeenCalled();
+  });
+
+  it('shows a Hebrew degrees message and does not POST when a degree row is incomplete', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByRole('button', { name: 'הוספת תואר' }));
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    expect(
+      await screen.findByText(
+        'פרטי התארים אינם תקינים — יש לבדוק שנת סיום, שנות לימוד, שנת זיכוי ושנות התמחות.',
+      ),
+    ).toBeTruthy();
+    expect(calculateTaxYear).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the engine Hebrew 400 for a child age the engine rejects (6-17 band)', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    const serverMessage =
+      'נקודות זיכוי בגין ילד בגיל 7 אינן נתמכות עדיין — יש להזין ידנית בשדה הנקודות הנוספות';
+    vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(400, serverMessage));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // Age 7 is inside the shared schema's 0-18 statutory domain, so the
+    // request is submitted and the ENGINE rejects it — in Hebrew.
+    await user.click(await screen.findByRole('button', { name: 'הוספת ילד' }));
+    await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '7');
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    const alert = await screen.findByText(serverMessage);
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+      taxpayer: {
+        gender: 'male',
+        additionalCreditPoints: 0,
+        children: [{ ageInTaxYear: 7, role: 'custodial' }],
+      },
+    });
   });
 
   it('renders the 15% non-linked-interest audit section only when there is such income', async () => {
