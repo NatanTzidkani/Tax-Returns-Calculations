@@ -43,7 +43,26 @@ const STATUS_MESSAGES: Record<number, string> = {
   413: 'הקובץ גדול מדי — המגבלה היא 15MB',
   415: 'סוג תוכן לא נתמך',
   500: 'שגיאה פנימית בשרת',
+  503: 'השירות אינו זמין זמנית',
 };
+
+/**
+ * node-postgres / OS error codes that mean the database is unreachable — an
+ * outage, not a bad request. We map these to 503 so a downed `db` container
+ * reads as "temporarily unavailable, try again" rather than a generic 500
+ * (see the auth upsert in routes/auth.ts, which has no reason to swallow them).
+ */
+const DB_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'EAI_AGAIN',
+  '08006', // connection_failure
+  '08001', // sqlclient_unable_to_establish_sqlconnection
+  '08004', // sqlserver_rejected_establishment_of_sqlconnection
+  '57P03', // cannot_connect_now (server starting up)
+]);
 
 /** Routes reachable without a session — Docker healthchecks and sign-in itself. */
 const PUBLIC_ROUTES: ReadonlySet<string> = new Set(['GET /health', 'POST /auth/google']);
@@ -78,8 +97,13 @@ export function buildApp(deps: AppDeps = {}): FastifyInstance {
   };
 
   app.setErrorHandler((err: FastifyError, _req, reply) => {
+    const code = (err as { code?: unknown }).code;
     const status =
-      typeof err.statusCode === 'number' && err.statusCode >= 400 ? err.statusCode : 500;
+      typeof code === 'string' && DB_UNAVAILABLE_CODES.has(code)
+        ? 503
+        : typeof err.statusCode === 'number' && err.statusCode >= 400
+          ? err.statusCode
+          : 500;
     if (status >= 500) app.log.error(err);
     reply
       .code(status)
