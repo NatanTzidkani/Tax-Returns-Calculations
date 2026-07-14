@@ -7,6 +7,7 @@ import {
   Outlet,
   redirect,
   type RouterHistory,
+  useNavigate,
   useRouterState,
 } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -33,11 +34,19 @@ function AuthStatus() {
   const { t } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   const mutation = useMutation({
     mutationFn: signOut,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: authQueryKey }),
+    // Clearing the me-query hides the header, but the protected route stays
+    // mounted (beforeLoad only runs on navigation) — so navigate to /sign-in
+    // first (while still mounted), then drop the cached user so any later
+    // guard sees a logged-out state.
+    onSuccess: async () => {
+      await navigate({ to: '/sign-in' });
+      queryClient.setQueryData(authQueryKey, null);
+    },
   });
 
   if (!auth.data || pathname === '/sign-in') {
