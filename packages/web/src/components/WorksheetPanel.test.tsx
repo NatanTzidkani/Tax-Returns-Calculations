@@ -9,6 +9,7 @@ import type {
   TaxYear,
 } from '../api/client';
 import {
+  ApiError,
   calculateTaxYear,
   getCalculation,
   getMe,
@@ -17,7 +18,19 @@ import {
 } from '../api/client';
 import { renderApp } from '../test/render';
 
-vi.mock('../api/client');
+// Partial mock: keep the real `ApiError` class so the panel's
+// `instanceof ApiError` check (server Hebrew message surfacing) works.
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return {
+    ...actual,
+    getMe: vi.fn(),
+    listTaxYears: vi.fn(),
+    listDocuments: vi.fn(),
+    getCalculation: vi.fn(),
+    calculateTaxYear: vi.fn(),
+  };
+});
 
 const a = agorot;
 
@@ -420,6 +433,128 @@ describe('WorksheetPanel', () => {
         normalize(content).includes('מועבר לקיזוז בשנים הבאות'),
       ),
     ).toBeTruthy();
+  });
+
+  it('renders one line per breakdown row, preferring the engine Hebrew label', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(
+      makeCalculation(
+        {},
+        {
+          creditPoints: {
+            points: 10.25,
+            breakdown: [
+              { reason: 'resident', points: 2.25 },
+              { reason: 'child', points: 1.5, label: 'ילד — גיל 1 בשנת המס (סעיף 40)' },
+              { reason: 'child', points: 2.5, label: 'ילד — גיל 4 בשנת המס (סעיף 40)' },
+              { reason: 'oleh', points: 3, label: 'עולה — 18 החודשים הראשונים (סעיף 35)' },
+              { reason: 'degree', points: 1, label: 'תואר ראשון — שנה ראשונה (סעיף 40ג)' },
+            ],
+            valueAgorot: a(2_976_600),
+          },
+        },
+      ),
+    );
+    await renderApp('/tax-years/ty-2024');
+    await screen.findByText('10%');
+
+    // Every row renders exactly once (getByText throws on 0 or 2 matches):
+    // two child rows must not collapse into one via a duplicate React key.
+    expect(screen.getByText('תושב/ת ישראל')).toBeTruthy();
+    expect(screen.getByText('ילד — גיל 1 בשנת המס (סעיף 40)')).toBeTruthy();
+    expect(screen.getByText('ילד — גיל 4 בשנת המס (סעיף 40)')).toBeTruthy();
+    expect(screen.getByText('עולה — 18 החודשים הראשונים (סעיף 35)')).toBeTruthy();
+    expect(screen.getByText('תואר ראשון — שנה ראשונה (סעיף 40ג)')).toBeTruthy();
+    expect(screen.getByText('1.5')).toBeTruthy();
+    expect(screen.getByText('2.5')).toBeTruthy();
+  });
+
+  it('falls back to official reason terminology when a breakdown row has no label', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(
+      makeCalculation(
+        {},
+        {
+          creditPoints: {
+            points: 8,
+            breakdown: [
+              { reason: 'child', points: 1.5 },
+              { reason: 'child', points: 2.5 },
+              { reason: 'oleh', points: 3 },
+              { reason: 'degree', points: 1 },
+            ],
+            valueAgorot: a(2_323_200),
+          },
+        },
+      ),
+    );
+    await renderApp('/tax-years/ty-2024');
+    await screen.findByText('10%');
+
+    // Two label-less child rows → two identical fallback lines, both kept.
+    expect(screen.getAllByText('נקודות זיכוי בגין ילד (סעיף 40)')).toHaveLength(2);
+    expect(screen.getByText('עולה חדש (סעיף 35)')).toBeTruthy();
+    expect(
+      screen.getByText('תואר אקדמי / תעודת מקצוע (סעיפים 40ג-40ה)'),
+    ).toBeTruthy();
+  });
+
+  it('never renders a raw i18n key for an unknown future breakdown reason', async () => {
+    type Reason = TaxReturnResult['creditPoints']['breakdown'][number]['reason'];
+    vi.mocked(getCalculation).mockResolvedValue(
+      makeCalculation(
+        {},
+        {
+          creditPoints: {
+            points: 1,
+            breakdown: [{ reason: 'disability' as Reason, points: 1 }],
+            valueAgorot: a(290_400),
+          },
+        },
+      ),
+    );
+    await renderApp('/tax-years/ty-2024');
+    await screen.findByText('10%');
+
+    expect(screen.queryByText(/worksheet\.creditReason/)).toBeNull();
+    // Sensible fallback: the raw reason token, never the i18n key path.
+    expect(screen.getByText('disability')).toBeTruthy();
+  });
+
+  it('shows the server Hebrew message when calculate fails with an ApiError', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    const serverMessage =
+      'נקודות זיכוי בגין ילד בגיל 7 אינן נתמכות עדיין — יש להזין ידנית בשדה הנקודות הנוספות';
+    vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(400, serverMessage));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+
+    const alert = await screen.findByText(serverMessage);
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(screen.queryByText('החישוב נכשל')).toBeNull();
+  });
+
+  it('falls back to the generic error when an ApiError carries no usable message', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(502, ''));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+
+    expect(await screen.findByText('החישוב נכשל')).toBeTruthy();
+  });
+
+  it('falls back to the generic error for non-ApiError failures, hiding raw error text', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockRejectedValue(new Error('fetch failed'));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+
+    expect(await screen.findByText('החישוב נכשל')).toBeTruthy();
+    expect(screen.queryByText('fetch failed')).toBeNull();
   });
 
   it('renders the 15% non-linked-interest audit section only when there is such income', async () => {

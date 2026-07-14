@@ -11,6 +11,7 @@ import { Label } from 'radix-ui';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  ApiError,
   type CalculateRequestBody,
   calculateTaxYear,
   getCalculation,
@@ -299,7 +300,13 @@ function TaxpayerForm({
       ) : null}
       {mutation.isError ? (
         <p role="alert" className={alertClasses}>
-          {t('worksheet.calculateError')}
+          {/* The engine's fail-loud errors reach us as 400s whose body is a
+              Hebrew `{ message }` (ApiError.message) — show them verbatim so
+              the reviewer sees WHY (e.g. the unsupported 6–17 child band).
+              Anything without a usable message → generic Hebrew fallback. */}
+          {mutation.error instanceof ApiError && mutation.error.message
+            ? mutation.error.message
+            : t('worksheet.calculateError')}
         </p>
       ) : null}
     </form>
@@ -385,12 +392,24 @@ function Worksheet({
 
       <WorksheetSection title={t('worksheet.creditPointsTitle')}>
         <ul className="mt-2">
-          {result.creditPoints.breakdown.map((row) => (
+          {/* Index keys are safe here: the breakdown is a snapshot rendered
+              whole (engine row order is stable), and reasons repeat (one row
+              per child/degree) so `row.reason` alone would collide. */}
+          {result.creditPoints.breakdown.map((row, index) => (
             <li
-              key={row.reason}
+              key={`${index}-${row.reason}`}
               className="flex items-baseline justify-between gap-4 py-1 text-sm text-neutral-600 dark:text-neutral-400"
             >
-              <span>{t(`worksheet.creditReason.${row.reason}`)}</span>
+              {/* The engine's Hebrew label says WHY (age band, degree year…);
+                  the i18n reason name is only the label-less fallback. An
+                  unknown future reason falls back to its raw token — never a
+                  raw `worksheet.creditReason.*` key path. */}
+              <span>
+                {row.label ??
+                  t(`worksheet.creditReason.${row.reason}`, {
+                    defaultValue: row.reason,
+                  })}
+              </span>
               <span className="font-medium tabular-nums text-neutral-900 dark:text-neutral-100">
                 {row.points}
               </span>

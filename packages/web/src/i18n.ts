@@ -170,10 +170,15 @@ export const resources = {
         bracketOpenEnded: 'ומעלה',
         incomeTaxTotal: 'סך מס הכנסה לפני זיכויים',
         creditPointsTitle: 'נקודות זיכוי',
+        // Fallback names per reason — the engine's per-row Hebrew `label`
+        // (age band, degree year…) is the primary display when present.
         creditReason: {
           resident: 'תושב/ת ישראל',
           female: 'אישה',
           additional: 'נקודות נוספות (סך מאומת ידנית)',
+          child: 'נקודות זיכוי בגין ילד (סעיף 40)',
+          oleh: 'עולה חדש (סעיף 35)',
+          degree: 'תואר אקדמי / תעודת מקצוע (סעיפים 40ג-40ה)',
         },
         creditPointsTotal: 'סך נקודות זיכוי',
         creditPointsValue: 'שווי נקודות הזיכוי',
