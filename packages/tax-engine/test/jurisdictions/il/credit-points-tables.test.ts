@@ -37,6 +37,17 @@ describe('childPointTwelfths — §40 child age→point table (report §1.1)', (
     expect(childPointTwelfths(18, 'other')).toBe(0);
   });
 
+  it('an unknown role throws loudly instead of falling back to a column', () => {
+    // A typo'd role must never silently pick the other-parent count — for an
+    // age-18 child that would turn 0.5 pt into a silent 0.
+    expect(() =>
+      childPointTwelfths(18, 'custodiaI' as Parameters<typeof childPointTwelfths>[1]),
+    ).toThrow(InvalidTaxInputError);
+    expect(() =>
+      childPointTwelfths(2, '' as Parameters<typeof childPointTwelfths>[1]),
+    ).toThrow(/children\[\]\.role/);
+  });
+
   it.each([6, 12, 17])(
     'age %i (6-17 band) throws loudly — count not yet owner-verified',
     (age) => {

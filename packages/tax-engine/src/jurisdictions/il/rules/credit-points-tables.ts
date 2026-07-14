@@ -71,6 +71,12 @@ export function childPointTwelfths(ageInTaxYear: number, role: ChildRole): numbe
         `enter this child's verified points via additionalCreditPoints instead, got age ${ageInTaxYear}`,
     );
   }
+  if (role !== 'custodial' && role !== 'other') {
+    throw new InvalidTaxInputError(
+      'children[].role',
+      `must be "custodial" or "other", got ${JSON.stringify(role)}`,
+    );
+  }
   return role === 'custodial' ? row[0] : row[1];
 }
 

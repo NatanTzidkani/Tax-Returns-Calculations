@@ -72,12 +72,16 @@ export function computeCreditPoints(
     // Eligibility (age band) is enforced by the helper — it throws loudly
     // outside 0-18 and for the not-yet-owner-verified 6-17 band.
     const childTwelfths = childPointTwelfths(child.ageInTaxYear, child.role);
-    breakdown.push({
-      reason: 'child',
-      points: childTwelfths / 12,
-      label: childLabel(child.ageInTaxYear, child.role),
-    });
-    twelfths += childTwelfths;
+    // Age 18 + other parent is the table's one legitimate 0 — same
+    // no-zero-rows convention as the oleh and degree branches.
+    if (childTwelfths > 0) {
+      breakdown.push({
+        reason: 'child',
+        points: childTwelfths / 12,
+        label: childLabel(child.ageInTaxYear, child.role),
+      });
+      twelfths += childTwelfths;
+    }
   }
 
   if (taxpayer.aliyah !== undefined) {

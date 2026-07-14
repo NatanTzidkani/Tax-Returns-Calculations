@@ -111,6 +111,21 @@ describe('computeCreditPoints', () => {
     });
   });
 
+  it('an age-18 child of the other parent (0 twelfths) adds no breakdown row', () => {
+    // Same no-zero-rows convention as the oleh and degree branches: the one
+    // legitimate 0 in the child table must not surface as a 0-point line.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        children: [{ ageInTaxYear: 18, role: 'other' }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(2.25);
+    expect(res.breakdown.filter((r) => r.reason === 'child')).toEqual([]);
+  });
+
   it('a child in the not-yet-verified 6-17 band propagates the loud throw', () => {
     // Delta from the plan: 6-17 ships DISABLED (secondary sources only) —
     // a resident woman with a child age 6 role "other" throws instead of
