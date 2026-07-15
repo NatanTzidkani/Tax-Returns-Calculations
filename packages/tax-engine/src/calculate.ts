@@ -28,8 +28,15 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * fixed min(studyYears, cap) windows, 2014-2022 single elective year, Form
  * 119 §6 internship start deferral, §7(ב)/§7(ג) exclusivity guards;
  * medicine/direct-track PhD and pre-2014 completions stay on
- * additionalCreditPoints. */
-export const ENGINE_VERSION = 'il-0.5.0';
+ * additionalCreditPoints.
+ * 0.6.0: child-point parent allocation by §66(ג)/§40 regime — new structured
+ * `taxpayer.parentContext` (+ per-child maintenanceShare / טופס 116ד
+ * deferral flags) replaces the placeholder children[].role; Schedule-A
+ * regimes, §40(ב)(2) fractional מזונות split, §40(ב)(1ב)/§40(ב)(2)/§40א
+ * flat additions, mother birth-year deferral; father §66(ג)(5) Schedule B
+ * and the §66(ג)(3) קצבה count stay gated owner-verify (disabled/loud, 0 +
+ * TODO respectively). */
+export const ENGINE_VERSION = 'il-0.6.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
