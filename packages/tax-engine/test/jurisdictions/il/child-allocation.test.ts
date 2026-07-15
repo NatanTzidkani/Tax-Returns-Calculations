@@ -143,6 +143,127 @@ describe('allocateChildTwelfths — separatedNonEntitled (§40(ב)(2) split כל
   });
 });
 
+describe('allocateChildTwelfths — טופס 116ד birth-year deferral (mother only)', () => {
+  it('deferBirthYearPoint at age 0 nets −12 twelfths via a negative birthYearDeferral row', () => {
+    const rows = allocateChildTwelfths(
+      { ageInTaxYear: 0, deferBirthYearPoint: true },
+      ctx('marriedRegisteredSpouse'),
+    );
+    expect(rows).toEqual([
+      { reason: 'child', twelfths: 30, label: 'ילד שנולד בשנת המס (§66(ג)(4) — אם)' },
+      {
+        reason: 'birthYearDeferral',
+        twelfths: -12,
+        label: 'דחיית נקודת זיכוי אחת משנת הלידה לשנת המס הבאה (טופס 116ד)',
+      },
+    ]);
+    expect(rows.reduce((sum, r) => sum + r.twelfths, 0)).toBe(30 - 12);
+  });
+
+  it('claimDeferredBirthYearPoint at age 1 adds +12 twelfths', () => {
+    const rows = allocateChildTwelfths(
+      { ageInTaxYear: 1, claimDeferredBirthYearPoint: true },
+      ctx('marriedRegisteredSpouse'),
+    );
+    expect(rows).toEqual([
+      { reason: 'child', twelfths: 54, label: 'ילד בן 1 (§66(ג)(4) — אם)' },
+      {
+        reason: 'birthYearDeferral',
+        twelfths: 12,
+        label: 'נקודת זיכוי שנדחתה משנת הלידה (טופס 116ד)',
+      },
+    ]);
+  });
+
+  it('the deferral works under the other Schedule-A (mother) regimes too', () => {
+    const rows = allocateChildTwelfths(
+      { ageInTaxYear: 0, deferBirthYearPoint: true },
+      ctx('singleParent'),
+    );
+    expect(rows.map((r) => r.reason)).toEqual(['child', 'birthYearDeferral']);
+  });
+
+  it('throws when deferBirthYearPoint is set for a child not born this year', () => {
+    expect(() =>
+      allocateChildTwelfths(
+        { ageInTaxYear: 2, deferBirthYearPoint: true },
+        ctx('marriedRegisteredSpouse'),
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('throws when claimDeferredBirthYearPoint is set for a child not aged 1', () => {
+    // The deferral is exactly one year (gov-116d): the deferred point is
+    // claimed the following tax year, when the child reaches age 1.
+    expect(() =>
+      allocateChildTwelfths(
+        { ageInTaxYear: 0, claimDeferredBirthYearPoint: true },
+        ctx('marriedRegisteredSpouse'),
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('either flag on a father regime throws — non-transferable', () => {
+    expect(() =>
+      allocateChildTwelfths(
+        { ageInTaxYear: 0, deferBirthYearPoint: true },
+        ctx('marriedOtherSpouse'),
+      ),
+    ).toThrow(/non-transferable/);
+    expect(() =>
+      allocateChildTwelfths(
+        { ageInTaxYear: 1, claimDeferredBirthYearPoint: true },
+        ctx('singleFatherOfToddler', { motherClaimsUnderSection1: false }),
+      ),
+    ).toThrow(/non-transferable/);
+  });
+
+  it('either flag under separatedNonEntitled throws (mother Schedule-A regimes only)', () => {
+    expect(() =>
+      allocateChildTwelfths(
+        { ageInTaxYear: 0, maintenanceShare: 0.5, deferBirthYearPoint: true },
+        ctx('separatedNonEntitled'),
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+});
+
+describe('allocateChildTwelfths — father regimes (§66(ג)(5) / §40(ב)(1א))', () => {
+  it('marriedOtherSpouse throws: Schedule B ships disabled until the owner fixes the פעוט range', () => {
+    expect(() =>
+      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('marriedOtherSpouse')),
+    ).toThrow(/not yet owner-verified/);
+    expect(() =>
+      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('marriedOtherSpouse')),
+    ).toThrow(/additionalCreditPoints/);
+  });
+
+  it('singleFatherOfToddler without the mother-claims guard zeroing it also throws', () => {
+    expect(() =>
+      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('singleFatherOfToddler')),
+    ).toThrow(/not yet owner-verified/);
+    expect(() =>
+      allocateChildTwelfths(
+        { ageInTaxYear: 1 },
+        ctx('singleFatherOfToddler', { motherClaimsUnderSection1: true }),
+      ),
+    ).toThrow(/not yet owner-verified/);
+  });
+
+  it('singleFatherOfToddler with motherClaimsUnderSection1:false → 0 with an explanatory label', () => {
+    // §40(ב)(1א) proviso: when the toddler's resident mother is not entitled
+    // under (1), the points attach to HER income — this filer gets none.
+    const rows = allocateChildTwelfths(
+      { ageInTaxYear: 1 },
+      ctx('singleFatherOfToddler', { motherClaimsUnderSection1: false }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ reason: 'child', twelfths: 0 });
+    expect(rows[0]!.label).toContain('§40(ב)(1א)');
+    expect(rows[0]!.label).toContain('האם');
+  });
+});
+
 describe('flatAdditionTwelfths — §40(ב)(1ב) / §40(ב)(2) / §40א / §66(ג)(3)', () => {
   it('singleParent regime adds one extra point (§40(ב)(1ב))', () => {
     expect(flatAdditionTwelfths(ctx('singleParent'))).toEqual([

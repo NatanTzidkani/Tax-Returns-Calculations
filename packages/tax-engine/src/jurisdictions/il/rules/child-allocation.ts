@@ -66,6 +66,12 @@ export interface ChildContextInput {
   ageInTaxYear: number;
   /** §40(ב)(2) separatedNonEntitled only: this parent's share of כלכלה, 0..1. */
   maintenanceShare?: number;
+  /** טופס 116ד: the mother defers this child's ONE birth-year point to the
+   *  next tax year. Age 0 + mother Schedule-A regimes only. */
+  deferBirthYearPoint?: boolean;
+  /** טופס 116ד: this filer CLAIMS the point deferred from the prior year for
+   *  this child (age 1 in the claim year). Mother-only, same guard. */
+  claimDeferredBirthYearPoint?: boolean;
 }
 
 export interface ChildAllocationRow {
@@ -174,6 +180,47 @@ export function allocateChildTwelfths(
     );
   }
 
+  // טופס 116ד birth-year deferral guards. source: allocation addendum §4 —
+  // the deferral is a FORM (gov-116d), MOTHER-ONLY and non-transferable
+  // ("not transferable to a non-working husband"), so it exists only under
+  // the Schedule-A (mother/§66(ג)(4)/§40(ב)(1),(2 entitled)) regimes.
+  const defers = child.deferBirthYearPoint === true;
+  const claims = child.claimDeferredBirthYearPoint === true;
+  if (defers || claims) {
+    const flagField = defers
+      ? 'children[].deferBirthYearPoint'
+      : 'children[].claimDeferredBirthYearPoint';
+    if (regime === 'marriedOtherSpouse' || regime === 'singleFatherOfToddler') {
+      throw new InvalidTaxInputError(
+        flagField,
+        `the טופס 116ד birth-year deferral is mother-only and non-transferable ` +
+          `(allocation addendum §4) — not available under the father regime "${regime}"`,
+      );
+    }
+    if (regime === 'separatedNonEntitled') {
+      throw new InvalidTaxInputError(
+        flagField,
+        `the טופס 116ד birth-year deferral is modelled only for the mother ` +
+          `Schedule-A regimes (§66(ג)(4) / §40(ב)(1),(2 entitled)) — not under ` +
+          `"separatedNonEntitled"`,
+      );
+    }
+    if (defers && age !== 0) {
+      throw new InvalidTaxInputError(
+        'children[].deferBirthYearPoint',
+        `only valid for a child born in the tax year (age 0) — the deferral moves ` +
+          `the birth-year point (gov-116d, allocation addendum §4), got age ${age}`,
+      );
+    }
+    if (claims && age !== 1) {
+      throw new InvalidTaxInputError(
+        'children[].claimDeferredBirthYearPoint',
+        `the deferred birth-year point is claimed in the FOLLOWING tax year, when ` +
+          `the child reaches age 1 (gov-116d, allocation addendum §4), got age ${age}`,
+      );
+    }
+  }
+
   switch (regime) {
     case 'marriedRegisteredSpouse':
     case 'singleParent':
@@ -183,17 +230,51 @@ export function allocateChildTwelfths(
       // ('custodial' column), which already fails loud for the disabled 6-17
       // band and out-of-range ages — no guard duplicated here.
       const twelfths = childPointTwelfths(age, 'custodial');
-      return [
+      const rows: ChildAllocationRow[] = [
         {
           reason: 'child',
           twelfths,
           label: `${childDescriptor(age)} (${SCHEDULE_A_CLAIMANTS[regime]})${suffix}`,
         },
       ];
+      if (defers) {
+        // Negative in the defer year — one full point moves to next year.
+        rows.push({
+          reason: 'birthYearDeferral',
+          twelfths: -12,
+          label: 'דחיית נקודת זיכוי אחת משנת הלידה לשנת המס הבאה (טופס 116ד)',
+        });
+      }
+      if (claims) {
+        rows.push({
+          reason: 'birthYearDeferral',
+          twelfths: 12,
+          label: 'נקודת זיכוי שנדחתה משנת הלידה (טופס 116ד)',
+        });
+      }
+      return rows;
     }
 
-    case 'marriedOtherSpouse':
     case 'singleFatherOfToddler':
+      if (context.motherClaimsUnderSection1 === false) {
+        // source: allocation addendum §2 — §40(ב)(1א) proviso: "ואולם אם אמו
+        // של הפעוט... אינה זכאית... לנקודות זיכוי לפי פסקה (1), יובאו בחשבון
+        // נקודות הזיכוי לפי פסקת משנה זו, כנגד הכנסתה מיגיעה אישית, ולא כנגד
+        // הכנסתו של האב" — the points attach to the MOTHER's income; this
+        // filer gets a legitimate 0 (dropped by the no-zero-rows caller).
+        return [
+          {
+            reason: 'child',
+            twelfths: 0,
+            label:
+              `${childDescriptor(age)} (§40(ב)(1א) — נקודות הפעוט נזקפות ` +
+              `כנגד הכנסת האם, לא כנגד הכנסת האב)`,
+          },
+        ];
+      }
+      // fall through to the disabled Schedule-B throw
+      // eslint-disable-next-line no-fallthrough
+    case 'marriedOtherSpouse':
       // Schedule B (father §66(ג)(5) / §40(ב)(1א) פעוט schedule) ships
       // DISABLED: the two consolidated ordinance texts DISAGREE on the פעוט
       // range (btl: under 4, father ages 0-3; gov.il: under 6, father ages
