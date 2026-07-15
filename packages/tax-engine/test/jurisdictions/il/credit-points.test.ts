@@ -204,8 +204,10 @@ describe('computeCreditPoints', () => {
     ]);
   });
 
-  it('singleParent adds the +1 §40(ב)(1ב) bonus row on top of the schedule', () => {
-    // 27 (resident man) + 54 (age 2) + 12 (bonus) = 93 twelfths = 7.75 pts.
+  it('singleParent stacks both columns per child and adds the +1 bonus (§40(ב)(1ב))', () => {
+    // 27 (resident man) + 54 (age 2, Schedule A) + 54 (stacked (1א) column)
+    // + 12 (bonus) = 147 twelfths = 12.25 pts — ita-030124 §3.3: the הורה
+    // יחיד claims both parents' tables.
     const res = computeCreditPoints(
       {
         isIsraeliResident: true,
@@ -215,7 +217,12 @@ describe('computeCreditPoints', () => {
       },
       y2025,
     );
-    expect(res.points).toBe(7.75);
+    expect(res.points).toBe(12.25);
+    expect(res.breakdown).toContainEqual({
+      reason: 'child',
+      points: 4.5,
+      label: 'ילד בן 2 — נקודות §40(ב)(1א) להורה יחיד (§40(ב)(1ב))',
+    });
     expect(res.breakdown).toContainEqual({
       reason: 'singleParentBonus',
       points: 1,

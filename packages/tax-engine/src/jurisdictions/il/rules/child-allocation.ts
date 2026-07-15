@@ -236,6 +236,20 @@ export function allocateChildTwelfths(
           label: `${childDescriptor(age)} (${SCHEDULE_A_CLAIMANTS[regime]})${suffix}`,
         },
       ];
+      if (regime === 'singleParent') {
+        // source: §40(ב)(1ב) verbatim (wikisource, re-read 2026-07-15;
+        // sah3184 addendum §2): "וכן יובאו בחשבון כנגד הכנסתו של ההורה
+        // כאמור, על אף הוראות פסקה (1א), גם נקודות הזיכוי לפי אותה פסקה" —
+        // the הורה-יחיד stacks the (1א) column (the tables' `other` role,
+        // 0 at 18 → legitimate-0, filtered by the caller) on top of the
+        // (1) schedule, per child; ita-030124 §3.3 states the same
+        // both-columns rule. Enabled il-0.7.0.
+        rows.push({
+          reason: 'child',
+          twelfths: childPointTwelfths(age, 'other'),
+          label: `${childDescriptor(age)} — נקודות §40(ב)(1א) להורה יחיד (§40(ב)(1ב))${suffix}`,
+        });
+      }
       if (defers) {
         // Negative in the defer year — one full point moves to next year.
         rows.push({
@@ -379,9 +393,11 @@ export function flatAdditionTwelfths(context: ParentContextInput): FlatAdditionR
   const rows: FlatAdditionRow[] = [];
 
   if (context.regime === 'singleParent') {
-    // source: allocation addendum §2 — §40(ב)(1ב): "במשפחה חד-הורית שבה ילד
-    // להורה אחד ואותו הורה זכאי לנקודות זיכוי לפי פסקה (1)... נקודת זיכוי
-    // אחת נוספת".
+    // source: §40(ב)(1ב) — "במשפחה חד-הורית שבה ילד להורה אחד ואותו הורה
+    // זכאי לנקודות זיכוי לפי פסקה (1), תובא בחשבון כנגד הכנסתו מיגיעה
+    // אישית של אותו הורה, נקודת זיכוי אחת נוספת" (the paragraph's second
+    // clause — the stacked (1א) column — is per-child and lives in
+    // allocateChildTwelfths).
     rows.push({
       reason: 'singleParentBonus',
       twelfths: 12,

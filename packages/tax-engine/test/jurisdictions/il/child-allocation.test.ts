@@ -20,10 +20,32 @@ describe('allocateChildTwelfths — Schedule A (§66(ג)(4) / §40(ב)(1) / §40
     ]);
   });
 
-  it('singleParent age 2 → the same Schedule-A 54 twelfths under §40(ב)(1)', () => {
+  it('singleParent age 2 → Schedule A PLUS the stacked §40(ב)(1א) column (§40(ב)(1ב), il-0.7.0)', () => {
+    // §40(ב)(1ב) verbatim: "וכן יובאו בחשבון כנגד הכנסתו של ההורה כאמור, על
+    // אף הוראות פסקה (1א), גם נקודות הזיכוי לפי אותה פסקה" — the הורה-יחיד
+    // claims BOTH parents' columns (ita-030124 §3.3; sah3184 addendum §2).
     expect(allocateChildTwelfths({ ageInTaxYear: 2 }, ctx('singleParent'))).toEqual([
       { reason: 'child', twelfths: 54, label: 'ילד בן 2 (§40(ב)(1) — הורה במשפחה חד-הורית)' },
+      { reason: 'child', twelfths: 54, label: 'ילד בן 2 — נקודות §40(ב)(1א) להורה יחיד (§40(ב)(1ב))' },
     ]);
+  });
+
+  it('singleParent age 8 → 24 + stacked 12 (6-17: 2 custodial + 1 other = 3 pts total)', () => {
+    expect(allocateChildTwelfths({ ageInTaxYear: 8 }, ctx('singleParent'))).toEqual([
+      { reason: 'child', twelfths: 24, label: 'ילד בן 8 (§40(ב)(1) — הורה במשפחה חד-הורית)' },
+      { reason: 'child', twelfths: 12, label: 'ילד בן 8 — נקודות §40(ב)(1א) להורה יחיד (§40(ב)(1ב))' },
+    ]);
+  });
+
+  it('singleParent age 18 → the stack row is a legitimate 0 (no age-18 row in (1א))', () => {
+    const rows = allocateChildTwelfths({ ageInTaxYear: 18 }, ctx('singleParent'));
+    expect(rows[0]).toMatchObject({ reason: 'child', twelfths: 6 });
+    expect(rows[1]).toMatchObject({ reason: 'child', twelfths: 0 });
+  });
+
+  it('the stack is singleParent-only: the other Schedule-A regimes emit one row per child', () => {
+    expect(allocateChildTwelfths({ ageInTaxYear: 8 }, ctx('marriedRegisteredSpouse'))).toHaveLength(1);
+    expect(allocateChildTwelfths({ ageInTaxYear: 8 }, ctx('separatedEntitled'))).toHaveLength(1);
   });
 
   it('separatedEntitled age 2 → the same Schedule-A 54 twelfths under §40(ב)(2)', () => {
@@ -178,7 +200,8 @@ describe('allocateChildTwelfths — טופס 116ד birth-year deferral (mother o
       { ageInTaxYear: 0, deferBirthYearPoint: true },
       ctx('singleParent'),
     );
-    expect(rows.map((r) => r.reason)).toEqual(['child', 'birthYearDeferral']);
+    // Schedule-A row, the stacked (1א) row (singleParent), then the deferral.
+    expect(rows.map((r) => r.reason)).toEqual(['child', 'child', 'birthYearDeferral']);
   });
 
   it('throws when deferBirthYearPoint is set for a child not born this year', () => {
