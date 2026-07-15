@@ -155,8 +155,8 @@ describe('calculate — golden scenarios', () => {
     // Structured children/oleh inputs are stamped as a new rule set
     // (il-0.4.0; the current version also carries the degree and
     // parent-allocation increments).
-    expect(ENGINE_VERSION).toBe('il-0.6.0');
-    expect(res.engineVersion).toBe('il-0.6.0');
+    expect(ENGINE_VERSION).toBe('il-0.7.0');
+    expect(res.engineVersion).toBe('il-0.7.0');
     expect(res.creditPoints.points).toBe(10.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(29_766));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([
@@ -188,8 +188,8 @@ describe('calculate — golden scenarios', () => {
     );
     // Structured degree input is stamped as a new rule set (il-0.5.0; the
     // current version also carries the parent-allocation increment).
-    expect(ENGINE_VERSION).toBe('il-0.6.0');
-    expect(res.engineVersion).toBe('il-0.6.0');
+    expect(ENGINE_VERSION).toBe('il-0.7.0');
+    expect(res.engineVersion).toBe('il-0.7.0');
     expect(res.creditPoints.points).toBe(3.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(9_438));
     expect(res.creditPoints.breakdown).toContainEqual({
@@ -228,8 +228,8 @@ describe('calculate — golden scenarios', () => {
       }),
     );
     // Regime-aware child-point allocation is stamped as a new rule set.
-    expect(ENGINE_VERSION).toBe('il-0.6.0');
-    expect(res.engineVersion).toBe('il-0.6.0');
+    expect(ENGINE_VERSION).toBe('il-0.7.0');
+    expect(res.engineVersion).toBe('il-0.7.0');
     expect(res.creditPoints.points).toBe(8.75);
     expect(res.creditPoints.valueAgorot).toBe(sh(25_410));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([
@@ -246,6 +246,34 @@ describe('calculate — golden scenarios', () => {
     // full withholding refunded.
     expect(res.incomeTaxAfterCreditsAgorot).toBe(0);
     expect(res.creditsAppliedAgorot).toBe(sh(13_435.2));
+    expect(res.refundAgorot).toBe(sh(12_000));
+  });
+
+  it('golden 2025: mother §66(ג)(4) with children 2 & 8 — the 6-17 band computes (il-0.7.0)', () => {
+    // The base parent-allocation plan's Task-5 scenario, legal since the
+    // sah3184 addendum verified the 6-17 band. Credit points in twelfths:
+    // resident 27 + woman 6 + child age 2 → 54 + child age 8 → 24 = 111
+    // twelfths = 9.25 points = 111 × 242 ₪ = 26,862 ₪.
+    const res = calculate(
+      baseInput({
+        salaries: [salary(120_000, 12_000, 7_200)],
+        taxpayer: {
+          isIsraeliResident: true,
+          gender: 'female',
+          parentContext: { regime: 'marriedRegisteredSpouse' },
+          children: [{ ageInTaxYear: 2 }, { ageInTaxYear: 8 }],
+        },
+      }),
+    );
+    expect(res.creditPoints.points).toBe(9.25);
+    expect(res.creditPoints.valueAgorot).toBe(sh(26_862));
+    expect(res.creditPoints.breakdown).toContainEqual({
+      reason: 'child',
+      points: 2,
+      label: 'ילד בן 8 (§66(ג)(4) — אם)',
+    });
+    // Income tax 13,435.2 ₪ < credits → tax zeroed, full withholding back.
+    expect(res.incomeTaxAfterCreditsAgorot).toBe(0);
     expect(res.refundAgorot).toBe(sh(12_000));
   });
 

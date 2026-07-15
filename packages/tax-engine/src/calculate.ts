@@ -19,7 +19,7 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * 0.3.0: added the 15% non-linked-interest branch (§125ג(ג)(1)) — new
  * `nonLinkedInterest` result section and Form 1301 fields 078/043; feeds
  * totalLiability, the surtax capital base, and totalWithheld.
- * 0.4.0: child (§40 ages 0-5 & 18; 6-17 disabled pending owner verification)
+ * 0.4.0: child (§40 ages 0-5 & 18; 6-17 disabled until 0.7.0)
  * and oleh (§35 pre2022/from2022 monthly schedules) credit points computed
  * from new structured `taxpayer.children` / `taxpayer.aliyah` inputs;
  * credit-point accumulator moved to integer twelfths.
@@ -35,8 +35,13 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * regimes, §40(ב)(2) fractional מזונות split, §40(ב)(1ב)/§40(ב)(2)/§40א
  * flat additions, mother birth-year deferral; father §66(ג)(5) Schedule B
  * and the §66(ג)(3) קצבה count stay gated owner-verify (disabled/loud, 0 +
- * TODO respectively). */
-export const ENGINE_VERSION = 'il-0.6.0';
+ * TODO respectively).
+ * 0.7.0: parent-allocation enablement from the primary-source ס"ח 3184
+ * addendum — 6-17 child band (2 custodial / 1 other), father Schedule B all
+ * ages (§66(ג)(5)/§40(ב)(1א); singleFatherOfToddler renamed singleFather),
+ * הורה-יחיד stacks the (1א) column per §40(ב)(1ב), קצבה settled as verified
+ * statutory 0 (NII-paid). §40(ב)(2) multi-child fraction stays gated. */
+export const ENGINE_VERSION = 'il-0.7.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
