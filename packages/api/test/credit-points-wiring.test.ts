@@ -7,6 +7,7 @@ import type {
   CalculateRequest,
   ChildInput,
   DegreeInput,
+  ParentContext,
 } from '@taxreturns/shared';
 import type { TaxpayerInput } from '@taxreturns/tax-engine';
 import { eq } from 'drizzle-orm';
@@ -40,12 +41,21 @@ type Taxpayer = CalculateRequest['taxpayer'];
 // Whole-field equality (also fails to compile if the taxpayer key is typo'd,
 // because the indexed access itself would not resolve):
 type _ChildrenField = Expect<Equal<Taxpayer['children'], TaxpayerInput['children']>>;
+type _ParentContextField = Expect<
+  Equal<Taxpayer['parentContext'], TaxpayerInput['parentContext']>
+>;
 type _AliyahField = Expect<Equal<Taxpayer['aliyah'], TaxpayerInput['aliyah']>>;
 type _DegreesField = Expect<Equal<Taxpayer['degrees'], TaxpayerInput['degrees']>>;
 
-// Element-type equality for the exported shared types:
+// Element-type equality for the exported shared types. The il-0.6.0 child
+// element is `{ ageInTaxYear; maintenanceShare?; deferBirthYearPoint?;
+// claimDeferredBirthYearPoint? }` — `role` is REMOVED, so this assertion
+// also rejects any resurrected `role` key:
 type _ChildElement = Expect<
   Equal<ChildInput, NonNullable<TaxpayerInput['children']>[number]>
+>;
+type _ParentContextShape = Expect<
+  Equal<ParentContext, NonNullable<TaxpayerInput['parentContext']>>
 >;
 type _AliyahShape = Expect<Equal<AliyahInput, NonNullable<TaxpayerInput['aliyah']>>>;
 type _DegreeElement = Expect<
@@ -140,16 +150,19 @@ async function snapshotCount(): Promise<number> {
 }
 
 describe('POST /tax-years/:id/calculate — structured credit-point inputs', () => {
-  it('a child age 2 flows to the engine (6.75 points) and into the snapshot input', async () => {
+  it('a child age 2 under marriedRegisteredSpouse flows to the engine (6.75 points) and into the snapshot input', async () => {
     const res = await calculate({
       gender: 'male',
-      children: [{ ageInTaxYear: 2, role: 'custodial' }],
+      parentContext: { regime: 'marriedRegisteredSpouse' },
+      children: [{ ageInTaxYear: 2 }],
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
 
-    // resident base 2.25 + child age 2 (4.5 pts custodial, engine rules
-    // credit-points-tables.ts CHILD_POINT_TWELFTHS[2] = 54/12) = 6.75.
+    // resident base 2.25 + child age 2 (4.5 pts, Schedule A via §66(ג)(4) —
+    // engine rules credit-points-tables.ts CHILD_POINT_TWELFTHS[2] = 54/12,
+    // routed by rules/child-allocation.ts) = 6.75 (mirrors the engine's own
+    // credit-points.test.ts case).
     expect(body.result.creditPoints.points).toBe(6.75);
     const childRow = body.result.creditPoints.breakdown.find(
       (row: { reason: string }) => row.reason === 'child',
@@ -162,7 +175,8 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
       gender: 'male',
       isIsraeliResident: true,
       additionalCreditPoints: 0,
-      children: [{ ageInTaxYear: 2, role: 'custodial' }],
+      parentContext: { regime: 'marriedRegisteredSpouse' },
+      children: [{ ageInTaxYear: 2 }],
     };
     expect(body.input.taxpayer).toEqual(expectedTaxpayer);
 
@@ -177,7 +191,8 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     const before = await snapshotCount();
     const res = await calculate({
       gender: 'male',
-      children: [{ ageInTaxYear: 7, role: 'custodial' }],
+      parentContext: { regime: 'marriedRegisteredSpouse' },
+      children: [{ ageInTaxYear: 7 }],
     });
     expect(res.statusCode).toBe(400);
     const message: string = res.json().message;
@@ -185,6 +200,64 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     expect(message).toContain('שגיאה בחישוב');
     expect(message).toContain('6-17'); // the engine's disabled-band reason
     expect(await snapshotCount()).toBe(before);
+  });
+
+  it('children WITHOUT parentContext → 400 with the engine Hebrew-prefixed message, no snapshot', async () => {
+    // The engine (not Zod) owns the children-require-parentContext rule —
+    // it never infers the §66(ג)/§40 regime.
+    const before = await snapshotCount();
+    const res = await calculate({
+      gender: 'male',
+      children: [{ ageInTaxYear: 2 }],
+    });
+    expect(res.statusCode).toBe(400);
+    const message: string = res.json().message;
+    expect(message).toMatch(/[֐-׿]/);
+    expect(message).toContain('שגיאה בחישוב');
+    expect(message).toContain('parentContext');
+    expect(await snapshotCount()).toBe(before);
+  });
+
+  it('a father regime (marriedOtherSpouse, disabled Schedule B) → 400 not-yet-owner-verified, no snapshot', async () => {
+    const before = await snapshotCount();
+    const res = await calculate({
+      gender: 'male',
+      parentContext: { regime: 'marriedOtherSpouse' },
+      children: [{ ageInTaxYear: 2 }],
+    });
+    expect(res.statusCode).toBe(400);
+    const message: string = res.json().message;
+    expect(message).toContain('שגיאה בחישוב');
+    expect(message).toContain('not yet owner-verified'); // פעוט range dispute
+    expect(await snapshotCount()).toBe(before);
+  });
+
+  it('singleParent: the §40(ב)(1ב) bonus row appears and the snapshot stores parentContext', async () => {
+    const res = await calculate({
+      gender: 'male',
+      parentContext: { regime: 'singleParent' },
+      children: [{ ageInTaxYear: 2 }],
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    // 27 (resident man) + 54 (age 2, Schedule A) + 12 (§40(ב)(1ב) bonus)
+    // = 93 twelfths = 7.75 pts (mirrors the engine's credit-points.test.ts
+    // singleParent case).
+    expect(body.result.creditPoints.points).toBe(7.75);
+    const bonusRow = body.result.creditPoints.breakdown.find(
+      (row: { reason: string }) => row.reason === 'singleParentBonus',
+    );
+    expect(bonusRow).toMatchObject({ points: 1 });
+
+    expect(body.input.taxpayer.parentContext).toEqual({ regime: 'singleParent' });
+    const [stored] = await db
+      .select()
+      .from(schema.calculations)
+      .where(eq(schema.calculations.id, body.id));
+    expect(
+      (stored!.input as { taxpayer: { parentContext: unknown } }).taxpayer.parentContext,
+    ).toEqual({ regime: 'singleParent' });
   });
 
   it('vocational + bachelor degrees (§7(ג) exclusivity) → 400 Hebrew-prefixed, no snapshot', async () => {
@@ -209,8 +282,9 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     // modules (never invented):
     //   resident base (credit-points.ts RESIDENT_TWELFTHS)          2.25
     //   female (FEMALE_TWELFTHS)                                    0.50
-    //   child age 2, custodial (CHILD_POINT_TWELFTHS[2] = 54)       4.50
-    //   child age 4, other (CHILD_POINT_TWELFTHS[4] = 30)           2.50
+    //   child age 2, Schedule A via marriedRegisteredSpouse
+    //     (CHILD_POINT_TWELFTHS[2] = 54)                            4.50
+    //   child age 4, same Schedule A (CHILD_POINT_TWELFTHS[4] = 30) 2.50
     //   aliyah 7/2024 'from2022' (credit-points-tables.ts
     //     OLEH_SCHEDULES.from2022): 2025 covers schedule months
     //     7-18 → 6×(1/12) + 6×(3/12) = 24 twelfths                  2.00
@@ -219,13 +293,15 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     //     window 2024-2026 → 2025 is year 2 of 3, 1 pt/yr           1.00
     //   additionalCreditPoints                                      0.75
     //                                                       total  13.50
+    // (Same numbers as before il-0.6.0: the engine's own re-expressed test —
+    // credit-points.test.ts 'resident woman, marriedRegisteredSpouse,
+    // children 2 & 4' — confirms ages 2/4 keep 4.5/2.5 under Schedule A;
+    // marriedRegisteredSpouse without flags adds no flat rows.)
     const res = await calculate({
       gender: 'female',
       additionalCreditPoints: 0.75,
-      children: [
-        { ageInTaxYear: 2, role: 'custodial' },
-        { ageInTaxYear: 4, role: 'other' },
-      ],
+      parentContext: { regime: 'marriedRegisteredSpouse' },
+      children: [{ ageInTaxYear: 2 }, { ageInTaxYear: 4 }],
       aliyah: { aliyahYear: 2024, aliyahMonth: 7, scheduleVariant: 'from2022' },
       degrees: [{ track: 'bachelor', completionYear: 2023, studyYears: 3 }],
     });
@@ -250,6 +326,7 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     expect(res.statusCode).toBe(200);
     const taxpayer = res.json().input.taxpayer;
     expect('children' in taxpayer).toBe(false);
+    expect('parentContext' in taxpayer).toBe(false);
     expect('aliyah' in taxpayer).toBe(false);
     expect('degrees' in taxpayer).toBe(false);
     expect(res.json().result.creditPoints.points).toBe(2.25);
