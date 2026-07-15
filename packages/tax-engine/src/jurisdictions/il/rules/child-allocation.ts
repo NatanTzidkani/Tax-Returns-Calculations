@@ -256,6 +256,10 @@ export function allocateChildTwelfths(
     }
 
     case 'singleFatherOfToddler':
+      // Age validity holds on EVERY path (fail-loud standalone): the
+      // mother-claims proviso below returns without consulting the count
+      // table, so it must validate the age itself.
+      assertChildAge(age);
       if (context.motherClaimsUnderSection1 === false) {
         // source: allocation addendum §2 — §40(ב)(1א) proviso: "ואולם אם אמו
         // של הפעוט... אינה זכאית... לנקודות זיכוי לפי פסקה (1), יובאו בחשבון
@@ -283,7 +287,8 @@ export function allocateChildTwelfths(
       // father count.
       throw new InvalidTaxInputError(
         'parentContext.regime',
-        `father §66(ג)(5) פעוט schedule not yet owner-verified (the consolidated ` +
+        `father פעוט schedule (§66(ג)(5) for a married father, §40(ב)(1א) for a ` +
+          `single father of a toddler) not yet owner-verified (the consolidated ` +
           `ordinance texts disagree on the פעוט age range) — use additionalCreditPoints ` +
           `for this filer's verified child points`,
       );
@@ -324,6 +329,32 @@ export function allocateChildTwelfths(
         },
       ];
     }
+  }
+}
+
+/**
+ * §40(ב)(2) multiplicity gate. The verbatim statute grants the non-entitled
+ * parent "נקודת זיכוי אחת או חלק ממנה" over "כלכלת ילדיהם" — the children
+ * COLLECTIVELY, a singular point — while the plan encoded the fraction per
+ * child. That per-child reading is disputed and not owner-verified (reviewer
+ * finding; plan checklist item "§40(ב)(2) fraction multiplicity"), so more
+ * than one child row under separatedNonEntitled fails loud: a SINGLE row
+ * with the combined share expresses the singular statutory reading exactly,
+ * and additionalCreditPoints covers anything beyond it.
+ * source: docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md §2.
+ */
+export function assertSeparatedNonEntitledMultiplicity(
+  childCount: number,
+  regime: ParentRegime,
+): void {
+  if (regime === 'separatedNonEntitled' && childCount > 1) {
+    throw new InvalidTaxInputError(
+      'taxpayer.children',
+      `the §40(ב)(2) fraction's per-child multiplicity is not yet owner-verified ` +
+        `(the statute reads "נקודת זיכוי אחת או חלק ממנה" over the children ` +
+        `collectively) — supply one child row with the combined share, or use ` +
+        `additionalCreditPoints`,
+    );
   }
 }
 

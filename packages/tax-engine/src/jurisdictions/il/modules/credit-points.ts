@@ -8,6 +8,7 @@ import type {
 } from '../../../core/types';
 import {
   allocateChildTwelfths,
+  assertSeparatedNonEntitledMultiplicity,
   flatAdditionTwelfths,
 } from '../rules/child-allocation';
 import {
@@ -80,6 +81,9 @@ export function computeCreditPoints(
     );
   }
   if (parentContext !== undefined) {
+    // §40(ב)(2) singular-point gate — per-child multiplicity is a disputed
+    // reading, so multiple separatedNonEntitled children fail loud.
+    assertSeparatedNonEntitledMultiplicity(children.length, parentContext.regime);
     for (const child of children) {
       // The allocation helper owns all regime/age/share/deferral guards and
       // fails loud (incl. the not-yet-owner-verified 6-17 band and father

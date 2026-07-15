@@ -130,6 +130,26 @@ describe('computeCreditPoints', () => {
     expect(res.breakdown).toEqual([{ reason: 'resident', points: 2.25 }]);
   });
 
+  it('two children under separatedNonEntitled propagate the multiplicity gate throw', () => {
+    // §40(ב)(2) reads "נקודת זיכוי אחת או חלק ממנה" over the children
+    // collectively — per-child multiplicity is a disputed reading, gated
+    // loud until the owner rules (reviewer finding; plan checklist).
+    expect(() =>
+      computeCreditPoints(
+        {
+          isIsraeliResident: true,
+          gender: 'male',
+          parentContext: { regime: 'separatedNonEntitled' },
+          children: [
+            { ageInTaxYear: 3, maintenanceShare: 0.5 },
+            { ageInTaxYear: 5, maintenanceShare: 0.5 },
+          ],
+        },
+        y2025,
+      ),
+    ).toThrow(/not yet owner-verified/);
+  });
+
   it('a child in the not-yet-verified 6-17 band propagates the loud throw', () => {
     // Delta carried from the base plan: 6-17 ships DISABLED (secondary
     // sources only) — a Schedule-A child age 6 throws instead of yielding

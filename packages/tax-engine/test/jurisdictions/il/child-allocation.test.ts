@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { InvalidTaxInputError } from '../../../src/core/errors';
 import {
   allocateChildTwelfths,
+  assertSeparatedNonEntitledMultiplicity,
   flatAdditionTwelfths,
   type ParentContextInput,
   type ParentRegime,
@@ -261,6 +262,53 @@ describe('allocateChildTwelfths — father regimes (§66(ג)(5) / §40(ב)(1א))
     expect(rows[0]).toMatchObject({ reason: 'child', twelfths: 0 });
     expect(rows[0]!.label).toContain('§40(ב)(1א)');
     expect(rows[0]!.label).toContain('האם');
+  });
+
+  it('the mother-claims-false path still validates the age (fail-loud standalone)', () => {
+    // Reviewer finding: this was the only allocator path with no age guard —
+    // a nonsense age must throw, never silently yield the 0-row.
+    for (const age of [42, 2.5, -1]) {
+      expect(() =>
+        allocateChildTwelfths(
+          { ageInTaxYear: age },
+          ctx('singleFatherOfToddler', { motherClaimsUnderSection1: false }),
+        ),
+      ).toThrow(InvalidTaxInputError);
+    }
+  });
+
+  it('the singleFatherOfToddler disabled-throw cites §40(ב)(1א), not only §66(ג)(5)', () => {
+    // Reviewer finding: the surfaced 400 must name the paragraph that
+    // actually governs this regime.
+    expect(() =>
+      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('singleFatherOfToddler')),
+    ).toThrow(/§40\(ב\)\(1א\)/);
+  });
+});
+
+describe('assertSeparatedNonEntitledMultiplicity — §40(ב)(2) singular-point gate', () => {
+  it('more than one child under separatedNonEntitled throws (disputed multiplicity)', () => {
+    expect(() =>
+      assertSeparatedNonEntitledMultiplicity(2, 'separatedNonEntitled'),
+    ).toThrow(InvalidTaxInputError);
+    expect(() =>
+      assertSeparatedNonEntitledMultiplicity(3, 'separatedNonEntitled'),
+    ).toThrow(/not yet owner-verified/);
+    expect(() =>
+      assertSeparatedNonEntitledMultiplicity(2, 'separatedNonEntitled'),
+    ).toThrow(/additionalCreditPoints/);
+  });
+
+  it('a single child under separatedNonEntitled, and any count elsewhere, pass', () => {
+    expect(() =>
+      assertSeparatedNonEntitledMultiplicity(1, 'separatedNonEntitled'),
+    ).not.toThrow();
+    expect(() =>
+      assertSeparatedNonEntitledMultiplicity(0, 'separatedNonEntitled'),
+    ).not.toThrow();
+    expect(() =>
+      assertSeparatedNonEntitledMultiplicity(5, 'marriedRegisteredSpouse'),
+    ).not.toThrow();
   });
 });
 

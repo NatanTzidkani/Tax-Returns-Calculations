@@ -396,6 +396,27 @@ item fails loud or routes to `additionalCreditPoints` rather than guessing.**
       plan stores it as `round(12 × maintenanceshare)` twelfths; **confirm the
       rounding convention** (round vs floor vs exact-fraction) and whether the
       Authority expects a specific precision on Form 1301.
+- [ ] **§40(ב)(2) fraction multiplicity (added 2026-07-14, reviewer finding).**
+      The verbatim statute reads "נקודת זיכוי אחת או חלק ממנה" over "כלכלת
+      ילדיהם" — the children **collectively**, a singular point — while this
+      plan's engine-shape section encoded the fraction **per child** (a
+      3-children × share-1.0 filer would get 3.0 points vs the plain reading's
+      1.0). Shipped **gated loud**: more than one child row under
+      `separatedNonEntitled` throws (`assertSeparatedNonEntitledMultiplicity`);
+      a single row with the combined share expresses the singular reading
+      exactly. Owner rules on per-child vs collective before the gate lifts.
+- [ ] **Flag routing looseness (recorded 2026-07-14, reviewer nit — harmless
+      today).** `receivesChildAllowance` (a §66 בן-זוג-רשום concept) and
+      `separateCalculation` are accepted and honored under every regime,
+      including `singleParent`/`separatedNonEntitled` where they are
+      statutorily incoherent; currently 0-point placeholder / label-only, so
+      no number is wrong, but tighten when the קצבה count goes live.
+- [ ] **§40(ב)(1א) explanatory 0-row not surfaced (recorded 2026-07-14,
+      reviewer nit).** The mother-claims-false father case returns its
+      explanatory 0-row, but the module's no-zero-rows filter drops it, so
+      the worksheet shows nothing for that child (the number is right; the
+      "no black box" label never reaches the user). Needs a row-model flag
+      (like the קצבה placeholder's deliberate push) in a future increment.
 - [ ] **Same-sex / registered-parent mapping.** The engine keys allocation on the
       declared *role* (בן-זוג-רשום vs other spouse), not literal gender, per the
       Tax Authority position (rmim-goldpro, secondary). Confirm this framing is
