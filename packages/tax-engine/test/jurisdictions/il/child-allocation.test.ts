@@ -41,13 +41,10 @@ describe('allocateChildTwelfths — Schedule A (§66(ג)(4) / §40(ב)(1) / §40
     ]);
   });
 
-  it('propagates the loud 6-17 disabled-band throw from the count table', () => {
-    // The plan's Task-1 sketch listed 6→24, but the 6-17 band ships DISABLED
-    // (secondary sources only — base-plan owner-verify item); the allocator
-    // must not bypass the table's guard.
-    expect(() =>
-      allocateChildTwelfths({ ageInTaxYear: 6 }, ctx('marriedRegisteredSpouse')),
-    ).toThrow(/not yet owner-verified/);
+  it('6-17 band enabled: Schedule A age 6 → 24 twelfths (2 pts, sah3184 addendum §2)', () => {
+    expect(allocateChildTwelfths({ ageInTaxYear: 6 }, ctx('marriedRegisteredSpouse'))).toEqual([
+      { reason: 'child', twelfths: 24, label: 'ילד בן 6 (§66(ג)(4) — אם)' },
+    ]);
   });
 
   it('propagates the loud out-of-range age throw from the count table', () => {

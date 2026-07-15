@@ -5,12 +5,12 @@ import {
   olehTwelfthsForTaxYear,
 } from '../../../src/jurisdictions/il/rules/credit-points-tables';
 
-// Point counts under test come from the approved research report
-// docs/superpowers/research/2026-07-13-credit-points-verification.md §1.1 —
-// never from memory. Ages 0-5 give both roles the same count; age 18 is
-// custodial-only. The 6-17 band (2 custodial / 1 other) is still
-// secondary-source-only (plan owner-verify item "6-17 band: count (1 vs 2)"),
-// so it ships DISABLED: the helper throws loudly instead of encoding it.
+// Point counts under test come from the approved research reports —
+// docs/superpowers/research/2026-07-13-credit-points-verification.md §1.1 and,
+// for the 6-17 band, the primary-source addendum
+// docs/superpowers/research/2026-07-14-sah3184-parent-allocation-addendum.md §2
+// (custodial 2 pts / other 1 pt, permanent from 2024) — never from memory.
+// Ages 0-5 give both roles the same count; age 18 is custodial-only.
 
 describe('childPointTwelfths — §40 child age→point table (report §1.1)', () => {
   // report §1.1: born this year 2.5 / 1→4.5 / 2→4.5 / 3→3.5 / 4→2.5 / 5→2.5
@@ -48,20 +48,14 @@ describe('childPointTwelfths — §40 child age→point table (report §1.1)', (
     ).toThrow(/children\[\]\.role/);
   });
 
-  it.each([6, 12, 17])(
-    'age %i (6-17 band) throws loudly — count not yet owner-verified',
+  it.each([6, 7, 12, 16, 17])(
+    'age %i (6-17 band) → custodial 24 twelfths (2 pts), other 12 (1 pt) — sah3184 addendum §2',
     (age) => {
-      // Delta 2: the 6-17 per-child count is secondary-source-only; the
-      // reviewer must use additionalCreditPoints for these children.
-      expect(() => childPointTwelfths(age, 'custodial')).toThrow(
-        InvalidTaxInputError,
-      );
-      expect(() => childPointTwelfths(age, 'other')).toThrow(
-        /not yet owner-verified/,
-      );
-      expect(() => childPointTwelfths(age, 'custodial')).toThrow(
-        /additionalCreditPoints/,
-      );
+      // il-0.7.0 enablement: sah3184 addendum §2 — enacted §40(ב)(1) tail /
+      // §66(ג)(4)(א) ("ושתי נקודות זיכוי... שש שנים ועד לשנת המס שקדמה לשנת
+      // בגרותו") and §66(ג)(5)(ג)/§40(ב)(1א)(ג) ("נקודת זיכוי אחת").
+      expect(childPointTwelfths(age, 'custodial')).toBe(24);
+      expect(childPointTwelfths(age, 'other')).toBe(12);
     },
   );
 

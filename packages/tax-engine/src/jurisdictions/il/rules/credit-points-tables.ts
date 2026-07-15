@@ -13,26 +13,24 @@ import { InvalidTaxInputError } from '../../../core/errors';
 //
 // Source of truth for every count:
 // docs/superpowers/research/2026-07-13-credit-points-verification.md
-// (§1.1 children, §3.1 oleh) — do not copy counts from anywhere else.
+// (§1.1 children, §3.1 oleh) and, for the child rows, the primary-source
+// addendum docs/superpowers/research/2026-07-14-sah3184-parent-allocation-addendum.md
+// (§1b enacted ס"ח 3184 verbatim; §2 the 6-17 band) — do not copy counts
+// from anywhere else.
 // ---------------------------------------------------------------------------
 
 export type ChildRole = 'custodial' | 'other';
 
 /**
  * §40 child points per eligible parent, by the age the child reaches during
- * the tax year, in twelfths of a point: [custodial, other].
- *
- * Only ages 0-5 and 18 are encoded. The 6-17 band (2 custodial / 1 other) is
- * still secondary-source-only — see the plan's owner-verify checklist item
- * "6-17 band: count (1 vs 2) and income-source restriction"
- * (docs/superpowers/plans/2026-07-13-credit-points.md) — so it ships DISABLED
- * and the helper throws loudly for those ages.
+ * the tax year, in twelfths of a point: [custodial, other]. Valid for tax
+ * years 2024+ (ס"ח 3184 commences 1.1.2024, permanent, no sunset).
  */
 const CHILD_POINT_TWELFTHS: Readonly<
   Record<number, readonly [custodial: number, other: number]>
 > = Object.freeze({
-  // source: docs/superpowers/research/2026-07-13-credit-points-verification.md
-  // §1.1 (kz-under6, kz-under18) — ages 0-5, both roles equal:
+  // source: sah3184 addendum §1b — enacted ס"ח 3184 §1 verbatim (רשומות),
+  // §40(ב)(1)/(1א) and §66(ג)(4)(א)/(5): ages 0-5 both roles equal —
   // born this year 2.5 / age 1: 4.5 / 2: 4.5 / 3: 3.5 / 4: 2.5 / 5: 2.5 pts.
   0: [30, 30],
   1: [54, 54],
@@ -40,16 +38,34 @@ const CHILD_POINT_TWELFTHS: Readonly<
   3: [42, 42],
   4: [30, 30],
   5: [30, 30],
+  // source: sah3184 addendum §2 — custodial 2 pts ("ושתי נקודות זיכוי...
+  // החל בשנת המס שבה מלאו לו שש שנים ועד לשנת המס שקדמה לשנת בגרותו",
+  // enacted §40(ב)(1) tail + consolidated §66(ג)(4)(א)); other parent 1 pt
+  // ("נקודת זיכוי אחת", §66(ג)(5)(ג)/§40(ב)(1א)(ג); ita-030124 tables
+  // 3.1/3.2).
+  6: [24, 12],
+  7: [24, 12],
+  8: [24, 12],
+  9: [24, 12],
+  10: [24, 12],
+  11: [24, 12],
+  12: [24, 12],
+  13: [24, 12],
+  14: [24, 12],
+  15: [24, 12],
+  16: [24, 12],
+  17: [24, 12],
   // source: docs/superpowers/research/2026-07-13-credit-points-verification.md
-  // §1.1 (kz-under18) — age 18: custodial 0.5 pt, other parent 0.
+  // §1.1 (kz-under18) + consolidated §66(ג)(4)(א) "½ נקודת זיכוי... בשנת
+  // בגרותו" — age 18: custodial 0.5 pt; other parent 0 (§66(ג)(5)/§40(ב)(1א)
+  // have no adulthood-year row).
   18: [6, 0],
 });
 
 /**
  * Twelfths of a point for one child at `ageInTaxYear` (the age the child
  * reaches during the tax year), for the given parent `role`. Fail-loud:
- * throws `InvalidTaxInputError` outside 0-18 and for the not-yet-verified
- * 6-17 band.
+ * throws `InvalidTaxInputError` outside 0-18.
  */
 export function childPointTwelfths(ageInTaxYear: number, role: ChildRole): number {
   if (!Number.isInteger(ageInTaxYear) || ageInTaxYear < 0 || ageInTaxYear > 18) {
@@ -60,15 +76,11 @@ export function childPointTwelfths(ageInTaxYear: number, role: ChildRole): numbe
   }
   const row = CHILD_POINT_TWELFTHS[ageInTaxYear];
   if (row === undefined) {
-    // Ages 6-17: the per-child count (2 custodial / 1 other) rests on
-    // secondary sources only — plan owner-verify item "6-17 band: count
-    // (1 vs 2) and income-source restriction"
-    // (docs/superpowers/plans/2026-07-13-credit-points.md). Ship disabled
-    // and loud until the owner verifies it against the enacted text.
+    // Unreachable while the table covers 0-18 — kept as a loud tripwire so a
+    // future row deletion can never silently zero a child.
     throw new InvalidTaxInputError(
       'children[].ageInTaxYear',
-      `the 6-17 age-band point count is not yet owner-verified (secondary sources only); ` +
-        `enter this child's verified points via additionalCreditPoints instead, got age ${ageInTaxYear}`,
+      `no point-table row for age ${ageInTaxYear} — the count table is incomplete`,
     );
   }
   if (role !== 'custodial' && role !== 'other') {

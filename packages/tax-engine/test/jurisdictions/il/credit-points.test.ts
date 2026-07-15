@@ -150,21 +150,23 @@ describe('computeCreditPoints', () => {
     ).toThrow(/not yet owner-verified/);
   });
 
-  it('a child in the not-yet-verified 6-17 band propagates the loud throw', () => {
-    // Delta carried from the base plan: 6-17 ships DISABLED (secondary
-    // sources only) — a Schedule-A child age 6 throws instead of yielding
-    // points.
-    expect(() =>
-      computeCreditPoints(
-        {
-          isIsraeliResident: true,
-          gender: 'female',
-          parentContext: { regime: 'marriedRegisteredSpouse' },
-          children: [{ ageInTaxYear: 6 }],
-        },
-        y2025,
-      ),
-    ).toThrow(/not yet owner-verified/);
+  it('a Schedule-A child in the 6-17 band yields 2 points (il-0.7.0, sah3184 addendum §2)', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 6 }],
+      },
+      y2025,
+    );
+    // 2.25 resident + 0.5 female + 2.0 for the age-6 child.
+    expect(res.points).toBe(4.75);
+    expect(res.breakdown).toContainEqual({
+      reason: 'child',
+      points: 2,
+      label: 'ילד בן 6 (§66(ג)(4) — אם)',
+    });
   });
 
   it('a child age 19 propagates the loud out-of-range throw', () => {
