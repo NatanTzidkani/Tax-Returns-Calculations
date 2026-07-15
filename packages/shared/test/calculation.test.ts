@@ -84,26 +84,29 @@ describe('CalculateRequestSchema', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Structured credit-point inputs (children / aliyah / degrees). The schema
-  // is STRUCTURAL only — legal rules (6-17 ban, elective-year candidates,
+  // Structured credit-point inputs (children+parentContext / aliyah /
+  // degrees). The schema is STRUCTURAL only — legal rules (6-17 ban, which
+  // regimes are enabled, maintenanceShare↔regime pairing, deferral
+  // eligibility, children-require-parentContext, elective-year candidates,
   // completionYear >= 2014…) stay in the engine, which fails loudly.
   // -------------------------------------------------------------------------
 
-  it('accepts children/aliyah/degrees structured inputs and passes them through', () => {
+  it('accepts children/parentContext/aliyah/degrees structured inputs and passes them through', () => {
     const parsed = CalculateRequestSchema.parse({
       taxpayer: {
         gender: 'male',
-        children: [
-          { ageInTaxYear: 2, role: 'custodial' },
-          { ageInTaxYear: 18, role: 'other' },
-        ],
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2 }, { ageInTaxYear: 18 }],
         aliyah: { aliyahYear: 2024, aliyahMonth: 7, scheduleVariant: 'from2022' },
         degrees: [{ track: 'bachelor', completionYear: 2023, studyYears: 3 }],
       },
     });
+    expect(parsed.taxpayer.parentContext).toEqual({
+      regime: 'marriedRegisteredSpouse',
+    });
     expect(parsed.taxpayer.children).toEqual([
-      { ageInTaxYear: 2, role: 'custodial' },
-      { ageInTaxYear: 18, role: 'other' },
+      { ageInTaxYear: 2 },
+      { ageInTaxYear: 18 },
     ]);
     expect(parsed.taxpayer.aliyah).toEqual({
       aliyahYear: 2024,
@@ -112,6 +115,77 @@ describe('CalculateRequestSchema', () => {
     });
     expect(parsed.taxpayer.degrees).toEqual([
       { track: 'bachelor', completionYear: 2023, studyYears: 3 },
+    ]);
+  });
+
+  it.each([
+    'marriedRegisteredSpouse',
+    'marriedOtherSpouse',
+    'singleParent',
+    'singleFatherOfToddler',
+    'separatedEntitled',
+    'separatedNonEntitled',
+  ] as const)('accepts parentContext regime %s (enabling is the engine call)', (regime) => {
+    const parsed = CalculateRequestSchema.parse({
+      taxpayer: { gender: 'male', parentContext: { regime } },
+    });
+    expect(parsed.taxpayer.parentContext).toEqual({ regime });
+  });
+
+  it('passes the optional parentContext flags and per-child context through verbatim', () => {
+    const parsed = CalculateRequestSchema.parse({
+      taxpayer: {
+        gender: 'female',
+        parentContext: {
+          regime: 'separatedNonEntitled',
+          receivesChildAllowance: true,
+          divorcedPaysMaintenanceRemarried: true,
+          separateCalculation: false,
+          motherClaimsUnderSection1: true,
+        },
+        children: [
+          { ageInTaxYear: 8, maintenanceShare: 0.4 },
+          { ageInTaxYear: 0, deferBirthYearPoint: true },
+          { ageInTaxYear: 1, claimDeferredBirthYearPoint: true },
+        ],
+      },
+    });
+    expect(parsed.taxpayer.parentContext).toEqual({
+      regime: 'separatedNonEntitled',
+      receivesChildAllowance: true,
+      divorcedPaysMaintenanceRemarried: true,
+      separateCalculation: false,
+      motherClaimsUnderSection1: true,
+    });
+    expect(parsed.taxpayer.children).toEqual([
+      { ageInTaxYear: 8, maintenanceShare: 0.4 },
+      { ageInTaxYear: 0, deferBirthYearPoint: true },
+      { ageInTaxYear: 1, claimDeferredBirthYearPoint: true },
+    ]);
+  });
+
+  it('does NOT require parentContext when children are supplied (engine-owned rule)', () => {
+    // Structural-only boundary: the engine throws its own Hebrew-mapped 400
+    // for children-without-parentContext; Zod must let it through.
+    const parsed = CalculateRequestSchema.parse({
+      taxpayer: { gender: 'male', children: [{ ageInTaxYear: 2 }] },
+    });
+    expect('parentContext' in parsed.taxpayer).toBe(false);
+    expect(parsed.taxpayer.children).toEqual([{ ageInTaxYear: 2 }]);
+  });
+
+  it('does NOT pair maintenanceShare with a regime (engine-owned rule)', () => {
+    // maintenanceShare under a non-separated regime is the ENGINE's loud
+    // throw, not a Zod rejection.
+    const parsed = CalculateRequestSchema.parse({
+      taxpayer: {
+        gender: 'male',
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2, maintenanceShare: 0.5 }],
+      },
+    });
+    expect(parsed.taxpayer.children).toEqual([
+      { ageInTaxYear: 2, maintenanceShare: 0.5 },
     ]);
   });
 
@@ -149,15 +223,33 @@ describe('CalculateRequestSchema', () => {
   it('keeps absent structured fields ABSENT as keys (engine must see undefined, never [])', () => {
     const parsed = CalculateRequestSchema.parse({ taxpayer: { gender: 'male' } });
     expect('children' in parsed.taxpayer).toBe(false);
+    expect('parentContext' in parsed.taxpayer).toBe(false);
     expect('aliyah' in parsed.taxpayer).toBe(false);
     expect('degrees' in parsed.taxpayer).toBe(false);
   });
 
   it.each([
-    ['child age above 18', { children: [{ ageInTaxYear: 19, role: 'custodial' }] }],
-    ['negative child age', { children: [{ ageInTaxYear: -1, role: 'custodial' }] }],
-    ['non-integer child age', { children: [{ ageInTaxYear: 2.5, role: 'custodial' }] }],
-    ['unknown child role', { children: [{ ageInTaxYear: 2, role: 'guardian' }] }],
+    ['child age above 18', { children: [{ ageInTaxYear: 19 }] }],
+    ['negative child age', { children: [{ ageInTaxYear: -1 }] }],
+    ['non-integer child age', { children: [{ ageInTaxYear: 2.5 }] }],
+    [
+      'maintenanceShare above 1',
+      { children: [{ ageInTaxYear: 8, maintenanceShare: 1.5 }] },
+    ],
+    [
+      'negative maintenanceShare',
+      { children: [{ ageInTaxYear: 8, maintenanceShare: -0.1 }] },
+    ],
+    [
+      'non-boolean deferBirthYearPoint',
+      { children: [{ ageInTaxYear: 0, deferBirthYearPoint: 'yes' }] },
+    ],
+    ['unknown parentContext regime', { parentContext: { regime: 'jointCustody' } }],
+    ['missing parentContext regime', { parentContext: {} }],
+    [
+      'non-boolean parentContext flag',
+      { parentContext: { regime: 'singleParent', receivesChildAllowance: 1 } },
+    ],
     [
       'aliyah month 0',
       { aliyah: { aliyahYear: 2024, aliyahMonth: 0, scheduleVariant: 'from2022' } },
