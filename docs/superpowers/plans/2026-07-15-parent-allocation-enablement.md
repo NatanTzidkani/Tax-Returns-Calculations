@@ -1,6 +1,10 @@
 # Parent-allocation enablement (il-0.7.0) — consume the ס"ח 3184 addendum
 
-**Date:** 2026-07-15 · **Status:** in progress
+**Date:** 2026-07-15 · **Status:** COMPLETE 2026-07-15 (all seven tasks; every
+task checkbox executed as written — commits `d9e0141`…HEAD on
+`feat/parent-allocation-enablement`. One deviation: the §40(ב)(1ב) verbatim
+re-fetch happened during planning, not Task 3, and is quoted in the source
+comments.)
 **Follows:** `docs/superpowers/plans/2026-07-13-parent-allocation.md` (il-0.6.0)
 **Research it consumes:** `docs/superpowers/research/2026-07-14-sah3184-parent-allocation-addendum.md`
 (the enacted ס"ח 3184 read verbatim from רשומות + two official ITA employer
