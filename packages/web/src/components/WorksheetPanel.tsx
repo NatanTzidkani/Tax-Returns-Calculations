@@ -144,7 +144,7 @@ const PARENT_REGIMES: readonly ParentRegime[] = [
   'marriedRegisteredSpouse',
   'marriedOtherSpouse',
   'singleParent',
-  'singleFatherOfToddler',
+  'singleFather',
   'separatedEntitled',
   'separatedNonEntitled',
 ];
@@ -305,11 +305,11 @@ function TaxpayerForm({
                   ? { divorcedPaysMaintenanceRemarried: true }
                   : {}),
                 ...(separateCalc ? { separateCalculation: true } : {}),
-                // אב לפעוט: the engine distinguishes an explicit `false`
+                // אב במשפחה חד-הורית: the engine distinguishes an explicit `false`
                 // (§40(ב)(1א) proviso — the points attach to the MOTHER's
                 // income, this filer gets 0) from `undefined`, so the visible
                 // checkbox always sends its value.
-                ...(parentRegime === 'singleFatherOfToddler'
+                ...(parentRegime === 'singleFather'
                   ? { motherClaimsUnderSection1: motherClaims }
                   : {}),
               },
@@ -559,7 +559,7 @@ function TaxpayerForm({
                 {t('worksheet.parentSeparateCalculationLabel')}
               </Label.Root>
             </div>
-            {parentRegime === 'singleFatherOfToddler' ? (
+            {parentRegime === 'singleFather' ? (
               <div className="flex items-center gap-2">
                 <input
                   id="worksheet-parent-mother-claims"

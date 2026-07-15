@@ -627,9 +627,9 @@ describe('WorksheetPanel', () => {
     const user = userEvent.setup();
     await renderApp('/tax-years/ty-2024');
 
-    // The 6-17 help note is visible under the children section.
+    // The children help note (all ages compute, il-0.7.0) is visible.
     expect(
-      await screen.findByText((c) => normalize(c).includes('ילדים בגילאי 6-17 אינם נתמכים עדיין')),
+      await screen.findByText((c) => normalize(c).includes('כל הגילאים 0-18 מחושבים אוטומטית')),
     ).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
@@ -684,7 +684,7 @@ describe('WorksheetPanel', () => {
     );
     // The mother-entitlement guard is only for the אב-לפעוט regime.
     expect(
-      screen.queryByLabelText('אם הפעוט זכאית לנקודות לפי סעיף 40(ב)(1)'),
+      screen.queryByLabelText('אם הילד זכאית לנקודות לפי סעיף 40(ב)(1)'),
     ).toBeNull();
     await user.click(
       screen.getByLabelText('גרוש/ה המשלם/ת מזונות ונשוי/אה בשנית (סעיף 40א)'),
@@ -722,13 +722,13 @@ describe('WorksheetPanel', () => {
 
     await user.selectOptions(
       await screen.findByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
-      'singleFatherOfToddler',
+      'singleFather',
     );
     // The guard checkbox appears, left unchecked → an explicit false is sent
     // (the engine distinguishes false — points attach to the mother's income —
     // from undefined, which hits the disabled Schedule-B throw).
     expect(
-      screen.getByLabelText('אם הפעוט זכאית לנקודות לפי סעיף 40(ב)(1)'),
+      screen.getByLabelText('אם הילד זכאית לנקודות לפי סעיף 40(ב)(1)'),
     ).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
     await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '1');
@@ -741,7 +741,7 @@ describe('WorksheetPanel', () => {
             gender: 'male',
             additionalCreditPoints: 0,
             parentContext: {
-              regime: 'singleFatherOfToddler',
+              regime: 'singleFather',
               motherClaimsUnderSection1: false,
             },
             children: [{ ageInTaxYear: 1 }],
@@ -1041,19 +1041,18 @@ describe('WorksheetPanel', () => {
     expect(calculateTaxYear).not.toHaveBeenCalled();
   });
 
-  it('surfaces the engine Hebrew 400 for a child age the engine rejects (6-17 band)', async () => {
+  it('surfaces the engine Hebrew 400 for a child context the engine rejects', async () => {
     vi.mocked(getCalculation).mockResolvedValue(null);
     const serverMessage =
-      'נקודות זיכוי בגין ילד בגיל 7 אינן נתמכות עדיין — יש להזין ידנית בשדה הנקודות הנוספות';
+      'שגיאה בחישוב: יש להצהיר על ההקשר ההורי (parentContext) כאשר מוזנים ילדים';
     vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(400, serverMessage));
 
     const user = userEvent.setup();
     await renderApp('/tax-years/ty-2024');
 
-    // Age 7 is inside the shared schema's 0-18 statutory domain, so the
-    // request is submitted and the ENGINE rejects it — in Hebrew. No regime
-    // is chosen either: children-without-parentContext is ALSO the engine's
-    // loud rule, never pre-blocked here.
+    // No regime is chosen: children-without-parentContext is the ENGINE's
+    // loud rule — the form never pre-blocks it, and the server's Hebrew
+    // message surfaces verbatim.
     await user.click(await screen.findByRole('button', { name: 'הוספת ילד' }));
     await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '7');
     await user.click(screen.getByRole('button', { name: 'חישוב' }));

@@ -138,7 +138,7 @@ export const resources = {
         genderFemale: 'נקבה',
         additionalPointsLabel: 'נקודות זיכוי נוספות',
         additionalPointsHelp:
-          'השדות המובנים למטה מכסים ילדים (גילאי 0-5 ו-18) לפי ההקשר ההורי, עולה חדש ותואר ראשון/שני/תעודת מקצוע. שדה זה נותר לכל השאר — ילדים בגילאי 6-17, נקודות האב לפי סעיף 66(ג)(5) (טרם אומתו), מסלולי דוקטורט וסיום לימודים לפני 2014 — מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
+          'השדות המובנים למטה מכסים ילדים (גילאי 0-18) לפי ההקשר ההורי, עולה חדש ותואר ראשון/שני/תעודת מקצוע. שדה זה נותר לכל השאר — מסלולי דוקטורט וסיום לימודים לפני 2014 — מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
         calculateButton: 'חישוב',
         invalidPoints:
           'נקודות הזיכוי הנוספות חייבות להיות מספר לא שלילי בכפולות של 0.25',
@@ -147,35 +147,35 @@ export const resources = {
         // engine owns the LAW and its Hebrew errors surface in the form.
         childrenTitle: 'ילדים (סעיף 40)',
         childAgeLabel: 'גיל בשנת המס',
-        // Parent-allocation regime picker (§66(ג)/§40(ב)/§40א, il-0.6.0).
-        // The regime is a filer-level declaration; WHICH regimes are legally
-        // available (father Schedule B is disabled pending owner-verify) is
-        // the ENGINE's rule — its Hebrew 400s surface in the form.
+        // Parent-allocation regime picker (§66(ג)/§40(ב)/§40א, il-0.6.0;
+        // all six regimes compute since il-0.7.0). The regime is a filer-
+        // level declaration; the LAW (schedules, guards) is the ENGINE's
+        // rule — its Hebrew 400s surface in the form.
         parentRegimeLabel: 'הקשר הורי (סעיפים 40(ב)/66(ג))',
         parentRegimePlaceholder: 'בחרו הקשר הורי',
         parentRegime: {
           marriedRegisteredSpouse: 'בן/בת הזוג הרשום/ה — §66(ג)(4)',
           marriedOtherSpouse: 'בן הזוג השני — §66(ג)(5)',
-          singleParent: 'משפחה חד-הורית',
-          singleFatherOfToddler: 'אב לפעוט (חד-הורית)',
+          singleParent: 'משפחה חד-הורית (הורה יחיד)',
+          singleFather: 'אב במשפחה חד-הורית — §40(ב)(1א)',
           separatedEntitled: 'הורה פרוד — הזכאי',
           separatedNonEntitled: 'הורה פרוד — שאינו זכאי',
         },
         parentRegimeHelp:
-          'ההקשר ההורי קובע לפי איזה סעיף בפקודה מוקצות נקודות הזיכוי בגין הילדים. נקודות האב לפי סעיף 66(ג)(5) (בן הזוג השני / אב לפעוט) טרם אומתו — מנוע החישוב ידחה אותן עם הודעת שגיאה, ובינתיים מזינים אותן בשדה "נקודות זיכוי נוספות".',
+          'ההקשר ההורי קובע לפי איזה סעיף בפקודה מוקצות נקודות הזיכוי בגין הילדים.',
         parentReceivesAllowanceLabel:
           'מקבל/ת קצבת ילדים מהמוסד לביטוח לאומי (סעיף 66(ג)(3))',
         parentMaintenanceRemarriedLabel:
           'גרוש/ה המשלם/ת מזונות ונשוי/אה בשנית (סעיף 40א)',
         parentSeparateCalculationLabel: 'חישוב נפרד (סעיף 66(ג)(1))',
-        parentMotherClaimsLabel: 'אם הפעוט זכאית לנקודות לפי סעיף 40(ב)(1)',
+        parentMotherClaimsLabel: 'אם הילד זכאית לנקודות לפי סעיף 40(ב)(1)',
         childMaintenanceShareLabel: 'חלק בהוצאות הכלכלה (0-1)',
         childDeferBirthYearLabel: 'דחיית נקודת שנת הלידה (טופס 116ד)',
         childClaimDeferredLabel: 'נקודה שנדחתה משנה קודמת (טופס 116ד)',
         addChild: 'הוספת ילד',
         removeChild: 'הסרת ילד',
         childrenHelp:
-          'ילדים בגילאי 6-17 אינם נתמכים עדיין בחישוב האוטומטי — יש להזין את הנקודות בגינם בשדה "נקודות זיכוי נוספות". גיל בטווח זה יידחה על ידי מנוע החישוב עם הודעת שגיאה.',
+          'כל הגילאים 0-18 מחושבים אוטומטית לפי ההקשר ההורי (מספר הנקודות לפי גיל אומת מול ס"ח 3184 והוראות רשות המסים).',
         invalidChildren:
           'פרטי הילדים אינם תקינים — יש לבדוק את הגיל, את חלק הכלכלה (בין 0 ל-1) ואת שדות ההקשר ההורי.',
         aliyahToggle: 'עלייה לישראל (סעיף 35)',
