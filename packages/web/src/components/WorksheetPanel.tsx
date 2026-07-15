@@ -4,6 +4,7 @@ import {
   agorot,
   CalculateRequestSchema,
   formatILS,
+  type ParentContext,
   shekelsToAgorot,
 } from '@taxreturns/shared';
 import type { BracketRow, TaxReturnResult } from '@taxreturns/tax-engine';
@@ -129,8 +130,24 @@ function electedYearVisible(completionYear: string): boolean {
 /** Worksheet-form row state (strings: controlled inputs, parsed on submit). */
 interface ChildRow {
   age: string;
-  role: 'custodial' | 'other';
+  /** §40(ב)(2) share of כלכלה — sent only under separatedNonEntitled. */
+  maintenanceShare: string;
+  /** טופס 116ד flags — sent only when checked (omitted, never false). */
+  deferBirthYearPoint: boolean;
+  claimDeferredBirthYearPoint: boolean;
 }
+
+type ParentRegime = ParentContext['regime'];
+
+/** Enum order mirrors the shared `ParentContextSchema` regime union. */
+const PARENT_REGIMES: readonly ParentRegime[] = [
+  'marriedRegisteredSpouse',
+  'marriedOtherSpouse',
+  'singleParent',
+  'singleFatherOfToddler',
+  'separatedEntitled',
+  'separatedNonEntitled',
+];
 
 interface DegreeRow {
   track: 'bachelor' | 'master' | 'vocational';
@@ -233,6 +250,14 @@ function TaxpayerForm({
   const [interest, setInterest] = useState('');
   const [interestWithheld, setInterestWithheld] = useState('');
   const [children, setChildren] = useState<ChildRow[]>([]);
+  // Filer-level parent-allocation context ('' = not declared → parentContext
+  // omitted from the body; children may still submit — the engine's loud
+  // children-require-parentContext rule is never pre-blocked here).
+  const [parentRegime, setParentRegime] = useState<'' | ParentRegime>('');
+  const [receivesAllowance, setReceivesAllowance] = useState(false);
+  const [maintenanceRemarried, setMaintenanceRemarried] = useState(false);
+  const [separateCalc, setSeparateCalc] = useState(false);
+  const [motherClaims, setMotherClaims] = useState(false);
   const [aliyahOn, setAliyahOn] = useState(false);
   const [aliyahYear, setAliyahYear] = useState('');
   const [aliyahMonth, setAliyahMonth] = useState('1');
@@ -269,11 +294,44 @@ function TaxpayerForm({
           additionalPoints.trim() === '' ? 0 : Number(additionalPoints),
         // Empty/off sections OMIT their key entirely — the engine
         // distinguishes `undefined` (not supplied) from `[]`.
+        ...(parentRegime !== ''
+          ? {
+              parentContext: {
+                regime: parentRegime,
+                // The three declaration flags are meaningful only when true
+                // (flat additions / קצבה routing) — unchecked → omitted.
+                ...(receivesAllowance ? { receivesChildAllowance: true } : {}),
+                ...(maintenanceRemarried
+                  ? { divorcedPaysMaintenanceRemarried: true }
+                  : {}),
+                ...(separateCalc ? { separateCalculation: true } : {}),
+                // אב לפעוט: the engine distinguishes an explicit `false`
+                // (§40(ב)(1א) proviso — the points attach to the MOTHER's
+                // income, this filer gets 0) from `undefined`, so the visible
+                // checkbox always sends its value.
+                ...(parentRegime === 'singleFatherOfToddler'
+                  ? { motherClaimsUnderSection1: motherClaims }
+                  : {}),
+              },
+            }
+          : {}),
         ...(children.length > 0
           ? {
               children: children.map((child) => ({
                 ageInTaxYear: Number(child.age),
-                role: child.role,
+                // Shown (and sent) only under separatedNonEntitled — a
+                // DISPLAY convenience like the degrees elected year; the
+                // ENGINE owns the maintenanceShare↔regime pairing rule.
+                // Blank → omit: the engine's "required under this regime"
+                // Hebrew 400 stays loud instead of a silent NaN.
+                ...(parentRegime === 'separatedNonEntitled' &&
+                child.maintenanceShare.trim() !== ''
+                  ? { maintenanceShare: Number(child.maintenanceShare) }
+                  : {}),
+                ...(child.deferBirthYearPoint ? { deferBirthYearPoint: true } : {}),
+                ...(child.claimDeferredBirthYearPoint
+                  ? { claimDeferredBirthYearPoint: true }
+                  : {}),
               })),
             }
           : {}),
@@ -324,7 +382,12 @@ function TaxpayerForm({
       for (const issue of parsed.error.issues) {
         const head = issue.path[0];
         const second = issue.path[1];
-        if (head === 'taxpayer' && second === 'children') {
+        // parentContext shape issues map to the children section — the
+        // regime picker and its flags live there.
+        if (
+          head === 'taxpayer' &&
+          (second === 'children' || second === 'parentContext')
+        ) {
           section = 'children';
           break;
         }
@@ -427,9 +490,95 @@ function TaxpayerForm({
       <p className={mutedTextClasses}>{t('worksheet.additionalPointsHelp')}</p>
       <p className={mutedTextClasses}>{t('worksheet.nonLinkedInterestInputHelp')}</p>
 
-      {/* Children (§40): dynamic rows — age in the tax year + parent role. */}
+      {/* Children (§40/§66(ג)): filer-level regime + flags, then dynamic
+          per-child rows. The picker offers ALL six regimes — the engine owns
+          which are enabled (father Schedule B 400s loudly in Hebrew). */}
       <div className="flex flex-col gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-800">
         <h3 className={sectionHeadingClasses}>{t('worksheet.childrenTitle')}</h3>
+        <div className="flex flex-col gap-1.5">
+          <Label.Root htmlFor="worksheet-parent-regime" className={labelClasses}>
+            {t('worksheet.parentRegimeLabel')}
+          </Label.Root>
+          <select
+            id="worksheet-parent-regime"
+            value={parentRegime}
+            onChange={(event) =>
+              setParentRegime(event.target.value as '' | ParentRegime)
+            }
+            className={`${fieldClasses} max-w-md`}
+          >
+            <option value="">{t('worksheet.parentRegimePlaceholder')}</option>
+            {PARENT_REGIMES.map((regime) => (
+              <option key={regime} value={regime}>
+                {t(`worksheet.parentRegime.${regime}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {parentRegime !== '' ? (
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                id="worksheet-parent-allowance"
+                type="checkbox"
+                checked={receivesAllowance}
+                onChange={(event) => setReceivesAllowance(event.target.checked)}
+                className={checkboxClasses}
+              />
+              <Label.Root htmlFor="worksheet-parent-allowance" className={labelClasses}>
+                {t('worksheet.parentReceivesAllowanceLabel')}
+              </Label.Root>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="worksheet-parent-maintenance-remarried"
+                type="checkbox"
+                checked={maintenanceRemarried}
+                onChange={(event) => setMaintenanceRemarried(event.target.checked)}
+                className={checkboxClasses}
+              />
+              <Label.Root
+                htmlFor="worksheet-parent-maintenance-remarried"
+                className={labelClasses}
+              >
+                {t('worksheet.parentMaintenanceRemarriedLabel')}
+              </Label.Root>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="worksheet-parent-separate-calc"
+                type="checkbox"
+                checked={separateCalc}
+                onChange={(event) => setSeparateCalc(event.target.checked)}
+                className={checkboxClasses}
+              />
+              <Label.Root
+                htmlFor="worksheet-parent-separate-calc"
+                className={labelClasses}
+              >
+                {t('worksheet.parentSeparateCalculationLabel')}
+              </Label.Root>
+            </div>
+            {parentRegime === 'singleFatherOfToddler' ? (
+              <div className="flex items-center gap-2">
+                <input
+                  id="worksheet-parent-mother-claims"
+                  type="checkbox"
+                  checked={motherClaims}
+                  onChange={(event) => setMotherClaims(event.target.checked)}
+                  className={checkboxClasses}
+                />
+                <Label.Root
+                  htmlFor="worksheet-parent-mother-claims"
+                  className={labelClasses}
+                >
+                  {t('worksheet.parentMotherClaimsLabel')}
+                </Label.Root>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <p className={mutedTextClasses}>{t('worksheet.parentRegimeHelp')}</p>
         {children.map((child, index) => (
           // Index keys are safe: rows are fully controlled from state.
           <div key={index} className="flex flex-wrap items-end gap-3">
@@ -450,21 +599,64 @@ function TaxpayerForm({
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label.Root htmlFor={`worksheet-child-${index}-role`} className={labelClasses}>
-                {t('worksheet.childRoleLabel')}
-              </Label.Root>
-              <select
-                id={`worksheet-child-${index}-role`}
-                value={child.role}
+            {parentRegime === 'separatedNonEntitled' ? (
+              <div className="flex flex-col gap-1.5">
+                <Label.Root
+                  htmlFor={`worksheet-child-${index}-maintenance`}
+                  className={labelClasses}
+                >
+                  {t('worksheet.childMaintenanceShareLabel')}
+                </Label.Root>
+                <input
+                  id={`worksheet-child-${index}-maintenance`}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={1}
+                  step="any"
+                  value={child.maintenanceShare}
+                  onChange={(event) =>
+                    updateChild(index, { maintenanceShare: event.target.value })
+                  }
+                  className={`${fieldClasses} w-24`}
+                />
+              </div>
+            ) : null}
+            <div className="flex items-center gap-2 pb-2">
+              <input
+                id={`worksheet-child-${index}-defer`}
+                type="checkbox"
+                checked={child.deferBirthYearPoint}
                 onChange={(event) =>
-                  updateChild(index, { role: event.target.value as 'custodial' | 'other' })
+                  updateChild(index, { deferBirthYearPoint: event.target.checked })
                 }
-                className={fieldClasses}
+                className={checkboxClasses}
+              />
+              <Label.Root
+                htmlFor={`worksheet-child-${index}-defer`}
+                className={labelClasses}
               >
-                <option value="custodial">{t('worksheet.childRoleCustodial')}</option>
-                <option value="other">{t('worksheet.childRoleOther')}</option>
-              </select>
+                {t('worksheet.childDeferBirthYearLabel')}
+              </Label.Root>
+            </div>
+            <div className="flex items-center gap-2 pb-2">
+              <input
+                id={`worksheet-child-${index}-claim-deferred`}
+                type="checkbox"
+                checked={child.claimDeferredBirthYearPoint}
+                onChange={(event) =>
+                  updateChild(index, {
+                    claimDeferredBirthYearPoint: event.target.checked,
+                  })
+                }
+                className={checkboxClasses}
+              />
+              <Label.Root
+                htmlFor={`worksheet-child-${index}-claim-deferred`}
+                className={labelClasses}
+              >
+                {t('worksheet.childClaimDeferredLabel')}
+              </Label.Root>
             </div>
             <button
               type="button"
@@ -479,7 +671,15 @@ function TaxpayerForm({
           <button
             type="button"
             onClick={() =>
-              setChildren((rows) => [...rows, { age: '0', role: 'custodial' }])
+              setChildren((rows) => [
+                ...rows,
+                {
+                  age: '0',
+                  maintenanceShare: '',
+                  deferBirthYearPoint: false,
+                  claimDeferredBirthYearPoint: false,
+                },
+              ])
             }
             className={secondaryButtonClasses}
           >

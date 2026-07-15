@@ -138,7 +138,7 @@ export const resources = {
         genderFemale: 'נקבה',
         additionalPointsLabel: 'נקודות זיכוי נוספות',
         additionalPointsHelp:
-          'השדות המובנים למטה מכסים ילדים (גילאי 0-5 ו-18), עולה חדש ותואר ראשון/שני/תעודת מקצוע. שדה זה נותר לכל השאר — ילדים בגילאי 6-17, חלוקת נקודות בין הורים, מסלולי דוקטורט וסיום לימודים לפני 2014 — מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
+          'השדות המובנים למטה מכסים ילדים (גילאי 0-5 ו-18) לפי ההקשר ההורי, עולה חדש ותואר ראשון/שני/תעודת מקצוע. שדה זה נותר לכל השאר — ילדים בגילאי 6-17, נקודות האב לפי סעיף 66(ג)(5) (טרם אומתו), מסלולי דוקטורט וסיום לימודים לפני 2014 — מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
         calculateButton: 'חישוב',
         invalidPoints:
           'נקודות הזיכוי הנוספות חייבות להיות מספר לא שלילי בכפולות של 0.25',
@@ -147,15 +147,37 @@ export const resources = {
         // engine owns the LAW and its Hebrew errors surface in the form.
         childrenTitle: 'ילדים (סעיף 40)',
         childAgeLabel: 'גיל בשנת המס',
-        childRoleLabel: 'תפקיד ההורה',
-        childRoleCustodial: 'הורה משמורן',
-        childRoleOther: 'הורה אחר',
+        // Parent-allocation regime picker (§66(ג)/§40(ב)/§40א, il-0.6.0).
+        // The regime is a filer-level declaration; WHICH regimes are legally
+        // available (father Schedule B is disabled pending owner-verify) is
+        // the ENGINE's rule — its Hebrew 400s surface in the form.
+        parentRegimeLabel: 'הקשר הורי (סעיפים 40(ב)/66(ג))',
+        parentRegimePlaceholder: 'בחרו הקשר הורי',
+        parentRegime: {
+          marriedRegisteredSpouse: 'בן/בת הזוג הרשום/ה — §66(ג)(4)',
+          marriedOtherSpouse: 'בן הזוג השני — §66(ג)(5)',
+          singleParent: 'משפחה חד-הורית',
+          singleFatherOfToddler: 'אב לפעוט (חד-הורית)',
+          separatedEntitled: 'הורה פרוד — הזכאי',
+          separatedNonEntitled: 'הורה פרוד — שאינו זכאי',
+        },
+        parentRegimeHelp:
+          'ההקשר ההורי קובע לפי איזה סעיף בפקודה מוקצות נקודות הזיכוי בגין הילדים. נקודות האב לפי סעיף 66(ג)(5) (בן הזוג השני / אב לפעוט) טרם אומתו — מנוע החישוב ידחה אותן עם הודעת שגיאה, ובינתיים מזינים אותן בשדה "נקודות זיכוי נוספות".',
+        parentReceivesAllowanceLabel:
+          'מקבל/ת קצבת ילדים מהמוסד לביטוח לאומי (סעיף 66(ג)(3))',
+        parentMaintenanceRemarriedLabel:
+          'גרוש/ה המשלם/ת מזונות ונשוי/אה בשנית (סעיף 40א)',
+        parentSeparateCalculationLabel: 'חישוב נפרד (סעיף 66(ג)(1))',
+        parentMotherClaimsLabel: 'אם הפעוט זכאית לנקודות לפי סעיף 40(ב)(1)',
+        childMaintenanceShareLabel: 'חלק בהוצאות הכלכלה (0-1)',
+        childDeferBirthYearLabel: 'דחיית נקודת שנת הלידה (טופס 116ד)',
+        childClaimDeferredLabel: 'נקודה שנדחתה משנה קודמת (טופס 116ד)',
         addChild: 'הוספת ילד',
         removeChild: 'הסרת ילד',
         childrenHelp:
           'ילדים בגילאי 6-17 אינם נתמכים עדיין בחישוב האוטומטי — יש להזין את הנקודות בגינם בשדה "נקודות זיכוי נוספות". גיל בטווח זה יידחה על ידי מנוע החישוב עם הודעת שגיאה.',
         invalidChildren:
-          'פרטי הילדים אינם תקינים — יש לבדוק את הגיל ואת תפקיד ההורה בכל שורה.',
+          'פרטי הילדים אינם תקינים — יש לבדוק את הגיל, את חלק הכלכלה (בין 0 ל-1) ואת שדות ההקשר ההורי.',
         aliyahToggle: 'עלייה לישראל (סעיף 35)',
         aliyahYearLabel: 'שנת העלייה',
         aliyahMonthLabel: 'חודש העלייה',
@@ -216,6 +238,13 @@ export const resources = {
           child: 'נקודות זיכוי בגין ילד (סעיף 40)',
           oleh: 'עולה חדש (סעיף 35)',
           degree: 'תואר אקדמי / תעודת מקצוע (סעיפים 40ג-40ה)',
+          // Parent-allocation reasons (§66(ג)/§40(ב)/§40א, il-0.6.0).
+          childAllowance: 'נקודות קצבת ילדים (סעיף 66(ג)(3))',
+          singleParentBonus: 'נקודת זיכוי למשפחה חד-הורית (סעיף 40(ב)(1ב))',
+          separatedBonus: 'נקודת זיכוי להורה פרוד זכאי (סעיף 40(ב)(2))',
+          maintenanceShare: 'חלק בהוצאות כלכלת ילד (סעיף 40(ב)(2))',
+          section40aBonus: 'משלם/ת מזונות שנישא/ה בשנית (סעיף 40א)',
+          birthYearDeferral: 'דחיית נקודת שנת הלידה לשנה הבאה (טופס 116ד)',
         },
         creditPointsTotal: 'סך נקודות זיכוי',
         creditPointsValue: 'שווי נקודות הזיכוי',

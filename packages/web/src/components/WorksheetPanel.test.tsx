@@ -494,6 +494,13 @@ describe('WorksheetPanel', () => {
               { reason: 'child', points: 2.5 },
               { reason: 'oleh', points: 3 },
               { reason: 'degree', points: 1 },
+              // Parent-allocation reasons (il-0.6.0) — fallbacks must exist.
+              { reason: 'childAllowance', points: 0 },
+              { reason: 'singleParentBonus', points: 1 },
+              { reason: 'separatedBonus', points: 1 },
+              { reason: 'maintenanceShare', points: 0.5 },
+              { reason: 'section40aBonus', points: 1 },
+              { reason: 'birthYearDeferral', points: -1 },
             ],
             valueAgorot: a(2_323_200),
           },
@@ -508,6 +515,24 @@ describe('WorksheetPanel', () => {
     expect(screen.getByText('עולה חדש (סעיף 35)')).toBeTruthy();
     expect(
       screen.getByText('תואר אקדמי / תעודת מקצוע (סעיפים 40ג-40ה)'),
+    ).toBeTruthy();
+    // The six parent-allocation reasons each render official terminology,
+    // never the raw token.
+    expect(screen.getByText('נקודות קצבת ילדים (סעיף 66(ג)(3))')).toBeTruthy();
+    expect(
+      screen.getByText('נקודת זיכוי למשפחה חד-הורית (סעיף 40(ב)(1ב))'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('נקודת זיכוי להורה פרוד זכאי (סעיף 40(ב)(2))'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('חלק בהוצאות כלכלת ילד (סעיף 40(ב)(2))'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('משלם/ת מזונות שנישא/ה בשנית (סעיף 40א)'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('דחיית נקודת שנת הלידה לשנה הבאה (טופס 116ד)'),
     ).toBeTruthy();
   });
 
@@ -616,8 +641,10 @@ describe('WorksheetPanel', () => {
     await user.selectOptions(ages[0]!, '2');
     await user.selectOptions(ages[1]!, '4');
     await user.selectOptions(ages[2]!, '18');
-    const roles = screen.getAllByLabelText('תפקיד ההורה');
-    await user.selectOptions(roles[1]!, 'other');
+    await user.selectOptions(
+      screen.getByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'marriedRegisteredSpouse',
+    );
 
     // Removing the last row leaves the first two intact.
     await user.click(screen.getAllByRole('button', { name: 'הסרת ילד' })[2]!);
@@ -630,14 +657,230 @@ describe('WorksheetPanel', () => {
           taxpayer: {
             gender: 'male',
             additionalCreditPoints: 0,
+            parentContext: { regime: 'marriedRegisteredSpouse' },
+            children: [{ ageInTaxYear: 2 }, { ageInTaxYear: 4 }],
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('reveals the conditional flags once a regime is chosen and POSTs them in parentContext', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // No regime chosen → no flag checkboxes.
+    expect(
+      await screen.findByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('חישוב נפרד (סעיף 66(ג)(1))')).toBeNull();
+
+    await user.selectOptions(
+      screen.getByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'singleParent',
+    );
+    // The mother-entitlement guard is only for the אב-לפעוט regime.
+    expect(
+      screen.queryByLabelText('אם הפעוט זכאית לנקודות לפי סעיף 40(ב)(1)'),
+    ).toBeNull();
+    await user.click(
+      screen.getByLabelText('גרוש/ה המשלם/ת מזונות ונשוי/אה בשנית (סעיף 40א)'),
+    );
+    await user.click(screen.getByLabelText('חישוב נפרד (סעיף 66(ג)(1))'));
+
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '3');
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            parentContext: {
+              regime: 'singleParent',
+              divorcedPaysMaintenanceRemarried: true,
+              separateCalculation: true,
+            },
+            children: [{ ageInTaxYear: 3 }],
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('sends motherClaimsUnderSection1 explicitly (false when unchecked) for אב לפעוט', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.selectOptions(
+      await screen.findByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'singleFatherOfToddler',
+    );
+    // The guard checkbox appears, left unchecked → an explicit false is sent
+    // (the engine distinguishes false — points attach to the mother's income —
+    // from undefined, which hits the disabled Schedule-B throw).
+    expect(
+      screen.getByLabelText('אם הפעוט זכאית לנקודות לפי סעיף 40(ב)(1)'),
+    ).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '1');
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            parentContext: {
+              regime: 'singleFatherOfToddler',
+              motherClaimsUnderSection1: false,
+            },
+            children: [{ ageInTaxYear: 1 }],
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('shows maintenanceShare only under separatedNonEntitled and POSTs the per-child fraction', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByRole('button', { name: 'הוספת ילד' }));
+    // No regime → hidden; a Schedule-A regime → still hidden.
+    expect(screen.queryByLabelText('חלק בהוצאות הכלכלה (0-1)')).toBeNull();
+    await user.selectOptions(
+      screen.getByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'separatedEntitled',
+    );
+    expect(screen.queryByLabelText('חלק בהוצאות הכלכלה (0-1)')).toBeNull();
+    // separatedNonEntitled → visible, sent as a 0-1 fraction.
+    await user.selectOptions(
+      screen.getByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'separatedNonEntitled',
+    );
+    await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '8');
+    await user.type(screen.getByLabelText('חלק בהוצאות הכלכלה (0-1)'), '0.4');
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            parentContext: { regime: 'separatedNonEntitled' },
+            children: [{ ageInTaxYear: 8, maintenanceShare: 0.4 }],
+          },
+        }),
+      { timeout: 10_000 },
+    );
+  });
+
+  it('rejects an out-of-range maintenanceShare via the shared schema without POSTing', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.selectOptions(
+      await screen.findByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'separatedNonEntitled',
+    );
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.type(screen.getByLabelText('חלק בהוצאות הכלכלה (0-1)'), '1.5');
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    expect(
+      await screen.findByText(
+        'פרטי הילדים אינם תקינים — יש לבדוק את הגיל, את חלק הכלכלה (בין 0 ל-1) ואת שדות ההקשר ההורי.',
+      ),
+    ).toBeTruthy();
+    expect(calculateTaxYear).not.toHaveBeenCalled();
+  });
+
+  it('POSTs the טופס 116ד per-child deferral flags only when checked', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.selectOptions(
+      await screen.findByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'marriedRegisteredSpouse',
+    );
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    const ages = screen.getAllByLabelText('גיל בשנת המס');
+    await user.selectOptions(ages[0]!, '0');
+    await user.selectOptions(ages[1]!, '1');
+    await user.click(
+      screen.getAllByLabelText('דחיית נקודת שנת הלידה (טופס 116ד)')[0]!,
+    );
+    await user.click(
+      screen.getAllByLabelText('נקודה שנדחתה משנה קודמת (טופס 116ד)')[1]!,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+    await waitFor(
+      () =>
+        expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+          taxpayer: {
+            gender: 'male',
+            additionalCreditPoints: 0,
+            parentContext: { regime: 'marriedRegisteredSpouse' },
             children: [
-              { ageInTaxYear: 2, role: 'custodial' },
-              { ageInTaxYear: 4, role: 'other' },
+              { ageInTaxYear: 0, deferBirthYearPoint: true },
+              { ageInTaxYear: 1, claimDeferredBirthYearPoint: true },
             ],
           },
         }),
       { timeout: 10_000 },
     );
+  });
+
+  it('surfaces the engine Hebrew 400 for a father regime instead of pre-blocking it', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    const serverMessage =
+      'לוח נקודות הזיכוי לאב לפי סעיף 66(ג)(5) טרם אומת — יש להזין את הנקודות בשדה הנקודות הנוספות';
+    vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(400, serverMessage));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    // Father regimes are legal shapes the UI must SUBMIT — the engine owns
+    // the "Schedule B not yet owner-verified" rule and 400s in Hebrew.
+    await user.selectOptions(
+      await screen.findByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'marriedOtherSpouse',
+    );
+    await user.click(screen.getByRole('button', { name: 'הוספת ילד' }));
+    await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '2');
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    const alert = await screen.findByText(serverMessage);
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(calculateTaxYear).toHaveBeenCalledWith('ty-2024', {
+      taxpayer: {
+        gender: 'male',
+        additionalCreditPoints: 0,
+        parentContext: { regime: 'marriedOtherSpouse' },
+        children: [{ ageInTaxYear: 2 }],
+      },
+    });
   });
 
   it('toggles the aliyah section and POSTs the structured aliyah record', async () => {
@@ -731,10 +974,19 @@ describe('WorksheetPanel', () => {
     const user = userEvent.setup();
     await renderApp('/tax-years/ty-2024');
 
-    // Touch every section, then undo: add+remove a child, toggle aliyah
-    // on+off, add+remove a degree.
+    // Touch every section, then undo: add+remove a child, pick a parent
+    // regime then reset to the placeholder, toggle aliyah on+off,
+    // add+remove a degree.
     await user.click(await screen.findByRole('button', { name: 'הוספת ילד' }));
     await user.click(screen.getByRole('button', { name: 'הסרת ילד' }));
+    await user.selectOptions(
+      screen.getByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      'singleParent',
+    );
+    await user.selectOptions(
+      screen.getByLabelText('הקשר הורי (סעיפים 40(ב)/66(ג))'),
+      '',
+    );
     await user.click(screen.getByLabelText('עלייה לישראל (סעיף 35)'));
     await user.type(screen.getByLabelText('שנת העלייה'), '2024');
     await user.click(screen.getByLabelText('עלייה לישראל (סעיף 35)'));
@@ -750,6 +1002,7 @@ describe('WorksheetPanel', () => {
     // ABSENCE directly — the engine distinguishes `undefined` from `[]`.
     const body = vi.mocked(calculateTaxYear).mock.calls[0]![1];
     expect('children' in body.taxpayer).toBe(false);
+    expect('parentContext' in body.taxpayer).toBe(false);
     expect('aliyah' in body.taxpayer).toBe(false);
     expect('degrees' in body.taxpayer).toBe(false);
   });
@@ -798,7 +1051,9 @@ describe('WorksheetPanel', () => {
     await renderApp('/tax-years/ty-2024');
 
     // Age 7 is inside the shared schema's 0-18 statutory domain, so the
-    // request is submitted and the ENGINE rejects it — in Hebrew.
+    // request is submitted and the ENGINE rejects it — in Hebrew. No regime
+    // is chosen either: children-without-parentContext is ALSO the engine's
+    // loud rule, never pre-blocked here.
     await user.click(await screen.findByRole('button', { name: 'הוספת ילד' }));
     await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '7');
     await user.click(screen.getByRole('button', { name: 'חישוב' }));
@@ -809,7 +1064,7 @@ describe('WorksheetPanel', () => {
       taxpayer: {
         gender: 'male',
         additionalCreditPoints: 0,
-        children: [{ ageInTaxYear: 7, role: 'custodial' }],
+        children: [{ ageInTaxYear: 7 }],
       },
     });
   });
