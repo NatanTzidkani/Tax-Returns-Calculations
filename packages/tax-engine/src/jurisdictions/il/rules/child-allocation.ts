@@ -74,6 +74,22 @@ export interface ChildAllocationRow {
   label: string;
 }
 
+export interface FlatAdditionRow {
+  reason: 'singleParentBonus' | 'separatedBonus' | 'section40aBonus' | 'childAllowance';
+  twelfths: number;
+  label: string;
+}
+
+/**
+ * §66(ג)(3) קצבה points to the בן-זוג-רשום. The ROUTING is primary-confirmed
+ * (allocation addendum §1: "זכאות לנקודות קיצבה על פי סעיף 40(א) תהא רק לבן
+ * הזוג הרשום") but whether post-2003-reform §40(א) קצבה credit points are
+ * still non-zero — and at what count — is NOT: plan owner-verify checklist
+ * item "§66(ג)(3) קצבה-point count". Ships as 0 with a TODO label; never
+ * guess a number. TODO(owner-verify): set the confirmed count.
+ */
+const CHILD_ALLOWANCE_TWELFTHS = 0;
+
 const REGIME_VALUES: readonly ParentRegime[] = [
   'marriedRegisteredSpouse',
   'marriedOtherSpouse',
@@ -228,4 +244,57 @@ export function allocateChildTwelfths(
       ];
     }
   }
+}
+
+/**
+ * Flat (per-filer, not per-child) additions the declared context grants,
+ * as labelled rows in twelfths. Pure; fail-loud on an unknown regime. The
+ * §66(ג)(3) childAllowance row is deliberately returned at 0 twelfths with
+ * its TODO label — an owner-verify placeholder the worksheet must surface,
+ * not a "nothing applies" zero.
+ */
+export function flatAdditionTwelfths(context: ParentContextInput): FlatAdditionRow[] {
+  assertKnownRegime(context.regime);
+  const rows: FlatAdditionRow[] = [];
+
+  if (context.regime === 'singleParent') {
+    // source: allocation addendum §2 — §40(ב)(1ב): "במשפחה חד-הורית שבה ילד
+    // להורה אחד ואותו הורה זכאי לנקודות זיכוי לפי פסקה (1)... נקודת זיכוי
+    // אחת נוספת".
+    rows.push({
+      reason: 'singleParentBonus',
+      twelfths: 12,
+      label: 'נקודת זיכוי נוספת — משפחה חד-הורית (§40(ב)(1ב))',
+    });
+  }
+  if (context.regime === 'separatedEntitled') {
+    // source: allocation addendum §2 — §40(ב)(2): "הורים החיים בנפרד יקבל
+    // ההורה הזכאי לנקודת זיכוי לפי פסקה (1), נקודת זיכוי אחת נוספת".
+    rows.push({
+      reason: 'separatedBonus',
+      twelfths: 12,
+      label: 'נקודת זיכוי נוספת — הורים החיים בנפרד (§40(ב)(2))',
+    });
+  }
+  if (context.divorcedPaysMaintenanceRemarried === true) {
+    // source: allocation addendum §2 — §40א: "בחישוב המס של גרוש שהוא או בן
+    // זוגו משלם מזונות לבן זוגו לשעבר, והוא נשוי לבן-זוג אחר, תובא בחשבון
+    // נקודת זיכוי אחת". Stacks on whatever regime bonus applies.
+    rows.push({
+      reason: 'section40aBonus',
+      twelfths: 12,
+      label: 'נקודת זיכוי — גרוש המשלם מזונות והנשוי לבן זוג אחר (§40א)',
+    });
+  }
+  if (context.receivesChildAllowance === true) {
+    // source: allocation addendum §1 — §66(ג)(3), routing only; count is
+    // owner-verify (see CHILD_ALLOWANCE_TWELFTHS).
+    rows.push({
+      reason: 'childAllowance',
+      twelfths: CHILD_ALLOWANCE_TWELFTHS,
+      label:
+        'נקודות קצבה לבן הזוג הרשום (§66(ג)(3)) — הכמות טרם אומתה מול המקור, נרשם 0',
+    });
+  }
+  return rows;
 }

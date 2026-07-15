@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { InvalidTaxInputError } from '../../../src/core/errors';
 import {
   allocateChildTwelfths,
+  flatAdditionTwelfths,
   type ParentContextInput,
   type ParentRegime,
 } from '../../../src/jurisdictions/il/rules/child-allocation';
@@ -139,6 +140,70 @@ describe('allocateChildTwelfths — separatedNonEntitled (§40(ב)(2) split כל
         ctx('separatedNonEntitled'),
       ),
     ).toThrow(InvalidTaxInputError);
+  });
+});
+
+describe('flatAdditionTwelfths — §40(ב)(1ב) / §40(ב)(2) / §40א / §66(ג)(3)', () => {
+  it('singleParent regime adds one extra point (§40(ב)(1ב))', () => {
+    expect(flatAdditionTwelfths(ctx('singleParent'))).toEqual([
+      {
+        reason: 'singleParentBonus',
+        twelfths: 12,
+        label: 'נקודת זיכוי נוספת — משפחה חד-הורית (§40(ב)(1ב))',
+      },
+    ]);
+  });
+
+  it('separatedEntitled regime adds one extra point (§40(ב)(2))', () => {
+    expect(flatAdditionTwelfths(ctx('separatedEntitled'))).toEqual([
+      {
+        reason: 'separatedBonus',
+        twelfths: 12,
+        label: 'נקודת זיכוי נוספת — הורים החיים בנפרד (§40(ב)(2))',
+      },
+    ]);
+  });
+
+  it('divorcedPaysMaintenanceRemarried adds §40א on top of the regime bonus', () => {
+    const rows = flatAdditionTwelfths(
+      ctx('separatedEntitled', { divorcedPaysMaintenanceRemarried: true }),
+    );
+    expect(rows).toEqual([
+      {
+        reason: 'separatedBonus',
+        twelfths: 12,
+        label: 'נקודת זיכוי נוספת — הורים החיים בנפרד (§40(ב)(2))',
+      },
+      {
+        reason: 'section40aBonus',
+        twelfths: 12,
+        label: 'נקודת זיכוי — גרוש המשלם מזונות והנשוי לבן זוג אחר (§40א)',
+      },
+    ]);
+  });
+
+  it('receivesChildAllowance yields the §66(ג)(3) row as 0 + TODO label (count owner-verify)', () => {
+    // Routing is primary-confirmed (בן-זוג-רשום only) but the current קצבה
+    // point COUNT is not — ships as 0 with a loud placeholder label, never a
+    // guessed number (plan owner-verify checklist).
+    const rows = flatAdditionTwelfths(
+      ctx('marriedRegisteredSpouse', { receivesChildAllowance: true }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ reason: 'childAllowance', twelfths: 0 });
+    expect(rows[0]!.label).toContain('§66(ג)(3)');
+    expect(rows[0]!.label).toContain('טרם אומתה');
+  });
+
+  it('regimes without flat additions yield no rows', () => {
+    expect(flatAdditionTwelfths(ctx('marriedRegisteredSpouse'))).toEqual([]);
+    expect(flatAdditionTwelfths(ctx('separatedNonEntitled'))).toEqual([]);
+  });
+
+  it('throws loudly on an unknown regime', () => {
+    expect(() => flatAdditionTwelfths(ctx('widowed' as ParentRegime))).toThrow(
+      InvalidTaxInputError,
+    );
   });
 });
 
