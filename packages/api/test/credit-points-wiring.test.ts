@@ -187,19 +187,17 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     expect((stored!.input as { taxpayer: unknown }).taxpayer).toEqual(expectedTaxpayer);
   });
 
-  it('a child age 7 (unverified 6-17 band) → 400 with the engine Hebrew-prefixed message, no snapshot', async () => {
-    const before = await snapshotCount();
+  it('a child age 7 (6-17 band, enabled il-0.7.0) computes 2 points end-to-end', async () => {
     const res = await calculate({
       gender: 'male',
       parentContext: { regime: 'marriedRegisteredSpouse' },
       children: [{ ageInTaxYear: 7 }],
     });
-    expect(res.statusCode).toBe(400);
-    const message: string = res.json().message;
-    expect(message).toMatch(/[֐-׿]/);
-    expect(message).toContain('שגיאה בחישוב');
-    expect(message).toContain('6-17'); // the engine's disabled-band reason
-    expect(await snapshotCount()).toBe(before);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // 27 (resident man) + 24 (age 7, custodial — sah3184 addendum §2)
+    // = 51 twelfths = 4.25 pts.
+    expect(body.result.creditPoints.points).toBe(4.25);
   });
 
   it('children WITHOUT parentContext → 400 with the engine Hebrew-prefixed message, no snapshot', async () => {
@@ -218,18 +216,21 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     expect(await snapshotCount()).toBe(before);
   });
 
-  it('a father regime (marriedOtherSpouse, disabled Schedule B) → 400 not-yet-owner-verified, no snapshot', async () => {
-    const before = await snapshotCount();
+  it('a father regime (marriedOtherSpouse, Schedule B enabled il-0.7.0) computes end-to-end', async () => {
     const res = await calculate({
       gender: 'male',
       parentContext: { regime: 'marriedOtherSpouse' },
       children: [{ ageInTaxYear: 2 }],
     });
-    expect(res.statusCode).toBe(400);
-    const message: string = res.json().message;
-    expect(message).toContain('שגיאה בחישוב');
-    expect(message).toContain('not yet owner-verified'); // פעוט range dispute
-    expect(await snapshotCount()).toBe(before);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // 27 (resident man) + 54 (age 2, §66(ג)(5) father column) = 81 twelfths
+    // = 6.75 pts.
+    expect(body.result.creditPoints.points).toBe(6.75);
+    const childRow = body.result.creditPoints.breakdown.find(
+      (row: { reason: string }) => row.reason === 'child',
+    );
+    expect(childRow.label).toContain('§66(ג)(5)');
   });
 
   it('singleParent: the §40(ב)(1ב) bonus row appears and the snapshot stores parentContext', async () => {
@@ -241,10 +242,10 @@ describe('POST /tax-years/:id/calculate — structured credit-point inputs', () 
     expect(res.statusCode).toBe(200);
     const body = res.json();
 
-    // 27 (resident man) + 54 (age 2, Schedule A) + 12 (§40(ב)(1ב) bonus)
-    // = 93 twelfths = 7.75 pts (mirrors the engine's credit-points.test.ts
-    // singleParent case).
-    expect(body.result.creditPoints.points).toBe(7.75);
+    // 27 (resident man) + 54 (age 2, Schedule A) + 54 (stacked §40(ב)(1א)
+    // column, il-0.7.0) + 12 (§40(ב)(1ב) bonus) = 147 twelfths = 12.25 pts
+    // (mirrors the engine's credit-points.test.ts singleParent case).
+    expect(body.result.creditPoints.points).toBe(12.25);
     const bonusRow = body.result.creditPoints.breakdown.find(
       (row: { reason: string }) => row.reason === 'singleParentBonus',
     );

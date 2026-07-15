@@ -12,10 +12,9 @@ const yearInt = z.number().int('years are integer tax years');
  * §35 / degrees §40ג-§40ה).
  * These schemas are STRUCTURAL ONLY — field names, enums, integers, and
  * physically-absurd bounds (month 1-12; age 0-18, the statutory domain of the
- * child table; maintenanceShare a 0-1 fraction). Legal rules — the
- * not-yet-verified 6-17 band, WHICH regimes are enabled (the father Schedule
- * B ships disabled), maintenanceShare↔regime pairing, the mother-only 116ד
- * deferral eligibility, children-require-parentContext, elective-year
+ * child table; maintenanceShare a 0-1 fraction). Legal rules — per-age point
+ * counts, regime schedules, maintenanceShare↔regime pairing, the mother-only
+ * 116ד deferral eligibility, children-require-parentContext, elective-year
  * candidate sets, completionYear >= 2014, internship conditions, §7(ב)/(ג)
  * exclusivity — live in the ENGINE only, which fails loudly (Hebrew-mapped
  * 400s). Do not duplicate them here (plans:
@@ -45,16 +44,16 @@ export type ChildInput = z.infer<typeof ChildInputSchema>;
 
 /**
  * Filer-level marital/custody context for child credit-point allocation
- * (§66(ג)/§40(ב)/§40א, il-0.6.0). The enum lists the engine's regime union
- * verbatim — whether a regime is ENABLED (father Schedule B is disabled
- * pending owner-verify) and every flag's legal effect stay in the engine.
+ * (§66(ג)/§40(ב)/§40א, il-0.6.0; regimes fully enabled il-0.7.0). The enum
+ * lists the engine's regime union verbatim — every flag's legal effect
+ * stays in the engine.
  */
 export const ParentContextSchema = z.object({
   regime: z.enum([
     'marriedRegisteredSpouse', // §66(ג)(4)
     'marriedOtherSpouse', // §66(ג)(5)
     'singleParent', // §40(ב)(1)+(1ב)
-    'singleFatherOfToddler', // §40(ב)(1א)
+    'singleFather', // §40(ב)(1א) — covers all his children since ס"ח 3048/3184 (was singleFatherOfToddler)
     'separatedEntitled', // §40(ב)(2), the (1)-entitled parent
     'separatedNonEntitled', // §40(ב)(2), split כלכלה
   ]),
@@ -64,7 +63,7 @@ export const ParentContextSchema = z.object({
   divorcedPaysMaintenanceRemarried: z.boolean().optional(),
   /** §66(ג)(1)/(1א): the filer is computed on a חישוב נפרד. */
   separateCalculation: z.boolean().optional(),
-  /** §40(ב)(1א) guard input for singleFatherOfToddler. */
+  /** §40(ב)(1א) guard input for singleFather. */
   motherClaimsUnderSection1: z.boolean().optional(),
 });
 
@@ -96,8 +95,8 @@ export type DegreeInput = z.infer<typeof DegreeInputSchema>;
  * Body of POST /tax-years/:id/calculate (Plan 5 contract). The taxpayer
  * details are per-request because they are not extracted from documents;
  * additionalCreditPoints is the reviewer-verified total for categories not
- * yet modelled structurally (6-17 children, the father פעוט schedule, PhD
- * tracks, pre-2014 completions…) in units of 0.25; children+parentContext/
+ * yet modelled structurally (PhD tracks, pre-2014 completions…) in units of
+ * 0.25; children+parentContext/
  * aliyah/degrees are the structured inputs the engine computes points from
  * (il-0.4.0/il-0.5.0/il-0.6.0). All are optional and, when absent, MUST stay
  * absent as keys — the engine distinguishes `undefined` (not supplied) from

@@ -122,7 +122,7 @@ describe('CalculateRequestSchema', () => {
     'marriedRegisteredSpouse',
     'marriedOtherSpouse',
     'singleParent',
-    'singleFatherOfToddler',
+    'singleFather',
     'separatedEntitled',
     'separatedNonEntitled',
   ] as const)('accepts parentContext regime %s (enabling is the engine call)', (regime) => {
