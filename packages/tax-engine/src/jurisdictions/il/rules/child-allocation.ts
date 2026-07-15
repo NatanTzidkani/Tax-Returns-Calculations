@@ -16,17 +16,11 @@ import { childPointTwelfths } from './credit-points-tables';
 // Source of truth for every allocation rule here:
 // docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md
 // (§66(ג)(1),(1א),(3),(4),(5) and §40(ב)(1),(1א),(1ב),(2),(3), §40א quoted
-// verbatim from the consolidated פקודת מס הכנסה). Counts come only via
-// credit-points-tables.ts, which cites
-// docs/superpowers/research/2026-07-13-credit-points-verification.md §1.1 and
-// docs/superpowers/research/2026-07-13-credit-points-counts-addendum.md.
-//
-// Correction flag carried from the allocation addendum §1 ("Correction
-// flag"): the count table's `other` column is the SEPARATED-PARENTS framing
-// (§40(ב)(2)), NOT a married father. A married father claims under §66(ג)(5)
-// (פעוט only) and gets nothing for ages 4-18 — so no branch here ever routes
-// a married father to the `other` column; Schedule-A regimes consume the
-// `custodial` column and the father schedule ships disabled (see below).
+// verbatim from the consolidated פקודת מס הכנסה), as amended by
+// docs/superpowers/research/2026-07-14-sah3184-parent-allocation-addendum.md
+// (the enacted ס"ח 3184 read verbatim: father Schedule B = the full `other`
+// column ages 0-17, the פעוט gate deleted from §40(ב)(3), קצבה = statutory
+// 0 in the computation). Counts come only via credit-points-tables.ts.
 //
 // All values are integer TWELFTHS of a point (same unit as the tables
 // module) so arithmetic stays float-free.
@@ -39,9 +33,9 @@ import { childPointTwelfths } from './credit-points-tables';
  */
 export type ParentRegime =
   | 'marriedRegisteredSpouse' // §66(ג)(4) — the אשה / בן-זוג-רשום, full ages 0-18 (Schedule A)
-  | 'marriedOtherSpouse' // §66(ג)(5) — the גבר / other spouse, פעוט only (Schedule B)
-  | 'singleParent' // §40(ב)(1) + (1ב) — משפחה חד-הורית, sole custody
-  | 'singleFatherOfToddler' // §40(ב)(1א) — אב לפעוט במשפחה חד-הורית
+  | 'marriedOtherSpouse' // §66(ג)(5) — the גבר / other spouse, all his children (Schedule B)
+  | 'singleParent' // §40(ב)(1) + (1ב) — משפחה חד-הורית שבה ילד להורה אחד
+  | 'singleFather' // §40(ב)(1א) — אב לילד במשפחה חד-הורית (פעוט scope removed by ס"ח 3048/3184)
   | 'separatedEntitled' // §40(ב)(2) — הורים החיים בנפרד, the (1)-entitled parent
   | 'separatedNonEntitled'; // §40(ב)(2) — the other separated parent, split כלכלה
 
@@ -56,8 +50,8 @@ export interface ParentContextInput {
    *  child points are fixed per-parent, never a splittable pool
    *  (allocation addendum §3). */
   separateCalculation?: boolean;
-  /** §40(ב)(1א) guard: whether the toddler's resident mother is entitled
-   *  under (1). false → the father's פעוט points attach to HER income. */
+  /** §40(ב)(1א) guard: whether the child's resident mother is entitled
+   *  under (1). false → the father's child points attach to HER income. */
   motherClaimsUnderSection1?: boolean;
 }
 
@@ -87,12 +81,13 @@ export interface FlatAdditionRow {
 }
 
 /**
- * §66(ג)(3) קצבה points to the בן-זוג-רשום. The ROUTING is primary-confirmed
- * (allocation addendum §1: "זכאות לנקודות קיצבה על פי סעיף 40(א) תהא רק לבן
- * הזוג הרשום") but whether post-2003-reform §40(א) קצבה credit points are
- * still non-zero — and at what count — is NOT: plan owner-verify checklist
- * item "§66(ג)(3) קצבה-point count". Ships as 0 with a TODO label; never
- * guess a number. TODO(owner-verify): set the confirmed count.
+ * §66(ג)(3) routes the §40(א) קצבה points to the בן-זוג-רשום — and since
+ * תיקון 99 (תשנ"ד-1994) those points are PAID BY THE NII inside קצבת
+ * הילדים, never a credit in the annual tax computation: §40(א) sipa
+ * "תשלום נקודות הקיצבה ייעשה בידי המוסד לביטוח לאומי לפי חוק הביטוח
+ * הלאומי" + the §33א definition. Verified statutory 0 (sah3184 addendum
+ * §3) — not a placeholder. The row is kept as an informational audit line
+ * (no-black-box worksheet convention).
  */
 const CHILD_ALLOWANCE_TWELFTHS = 0;
 
@@ -100,7 +95,7 @@ const REGIME_VALUES: readonly ParentRegime[] = [
   'marriedRegisteredSpouse',
   'marriedOtherSpouse',
   'singleParent',
-  'singleFatherOfToddler',
+  'singleFather',
   'separatedEntitled',
   'separatedNonEntitled',
 ];
@@ -180,21 +175,25 @@ export function allocateChildTwelfths(
     );
   }
 
-  // טופס 116ד birth-year deferral guards. source: allocation addendum §4 —
-  // the deferral is a FORM (gov-116d), MOTHER-ONLY and non-transferable
-  // ("not transferable to a non-working husband"), so it exists only under
-  // the Schedule-A (mother/§66(ג)(4)/§40(ב)(1),(2 entitled)) regimes.
+  // טופס 116ד birth-year deferral guards. source: §66(ג)(4)(א1) /
+  // §40(ב)(1א1), תיקון 247 תשע"ח-2018 (sah3184 addendum §4 pinned the
+  // statutory anchor): "אמו של ילד תהיה זכאית לבחור אם נקודת זיכוי אחת...
+  // בשנת הלידה, תובא בחשבון בשנת המס שבה נולד הילד או בשנת המס שלאחריה" —
+  // MOTHER-ONLY and non-transferable, so it exists only under the
+  // Schedule-A (mother/§66(ג)(4)/§40(ב)(1),(2 entitled)) regimes.
   const defers = child.deferBirthYearPoint === true;
   const claims = child.claimDeferredBirthYearPoint === true;
   if (defers || claims) {
     const flagField = defers
       ? 'children[].deferBirthYearPoint'
       : 'children[].claimDeferredBirthYearPoint';
-    if (regime === 'marriedOtherSpouse' || regime === 'singleFatherOfToddler') {
+    if (regime === 'marriedOtherSpouse' || regime === 'singleFather') {
+      // source: §40(ב)(1א1)/§66(ג)(4)(א1) (תיקון 247, תשע"ח-2018 — sah3184
+      // addendum §4): "אמו של ילד תהיה זכאית לבחור..." — mother-only.
       throw new InvalidTaxInputError(
         flagField,
         `the טופס 116ד birth-year deferral is mother-only and non-transferable ` +
-          `(allocation addendum §4) — not available under the father regime "${regime}"`,
+          `(§40(ב)(1א1)/§66(ג)(4)(א1)) — not available under the father regime "${regime}"`,
       );
     }
     if (regime === 'separatedNonEntitled') {
@@ -255,43 +254,53 @@ export function allocateChildTwelfths(
       return rows;
     }
 
-    case 'singleFatherOfToddler':
-      // Age validity holds on EVERY path (fail-loud standalone): the
-      // mother-claims proviso below returns without consulting the count
-      // table, so it must validate the age itself.
-      assertChildAge(age);
-      if (context.motherClaimsUnderSection1 === false) {
-        // source: allocation addendum §2 — §40(ב)(1א) proviso: "ואולם אם אמו
-        // של הפעוט... אינה זכאית... לנקודות זיכוי לפי פסקה (1), יובאו בחשבון
-        // נקודות הזיכוי לפי פסקת משנה זו, כנגד הכנסתה מיגיעה אישית, ולא כנגד
-        // הכנסתו של האב" — the points attach to the MOTHER's income; this
-        // filer gets a legitimate 0 (dropped by the no-zero-rows caller).
-        return [
-          {
-            reason: 'child',
-            twelfths: 0,
-            label:
-              `${childDescriptor(age)} (§40(ב)(1א) — נקודות הפעוט נזקפות ` +
-              `כנגד הכנסת האם, לא כנגד הכנסת האב)`,
-          },
-        ];
+    case 'singleFather':
+    case 'marriedOtherSpouse': {
+      // Schedule B — the father column (the tables' `other` role), ALL ages
+      // 0-18 (a legitimate 0 at 18). Enabled il-0.7.0.
+      // source: sah3184 addendum §1b/§1c — the enacted ס"ח 3184 §1(2)(ב)
+      // rewrote §66(ג)(5) to explicit bands over "בעד כל אחד מילדיו" and the
+      // פעוט definition is DELETED from §40(ב)(3) ("פעוט" – (נמחקה));
+      // consolidated §66(ג)(5)(א)-(ג) / §40(ב)(1א)(א)-(ג) verbatim (re-read
+      // from wikisource 2026-07-15): birth 2½ / ages 1-2 4½ / age 3 3½ /
+      // ages 4-5 2½ / ages 6-17 1 / age 18 — no row.
+      if (regime === 'singleFather') {
+        // Age validity holds on EVERY path (fail-loud standalone): the
+        // mother-claims proviso below returns without consulting the count
+        // table, so it must validate the age itself.
+        assertChildAge(age);
+        if (context.motherClaimsUnderSection1 === false) {
+          // source: §40(ב)(1א) proviso, verbatim (survives ס"ח 3184 —
+          // sah3184 addendum §1c): "ואולם אם אמו של הילד במשפחה חד-הורית
+          // היא תושבת ישראל ואינה זכאית, בשל אותו ילד, לנקודות זיכוי לפי
+          // פסקה (1), יובאו בחשבון נקודות הזיכוי לפי פסקת משנה זו, כנגד
+          // הכנסתה מיגיעה אישית, ולא כנגד הכנסתו של האב" — the points
+          // attach to the MOTHER's income; this filer gets a legitimate 0
+          // (dropped by the no-zero-rows caller).
+          return [
+            {
+              reason: 'child',
+              twelfths: 0,
+              label:
+                `${childDescriptor(age)} (§40(ב)(1א) — נקודות הילד נזקפות ` +
+                `כנגד הכנסת האם, לא כנגד הכנסת האב)`,
+            },
+          ];
+        }
       }
-      // fall through to the disabled Schedule-B throw
-      // eslint-disable-next-line no-fallthrough
-    case 'marriedOtherSpouse':
-      // Schedule B (father §66(ג)(5) / §40(ב)(1א) פעוט schedule) ships
-      // DISABLED: the two consolidated ordinance texts DISAGREE on the פעוט
-      // range (btl: under 4, father ages 0-3; gov.il: under 6, father ages
-      // 0-5 + §66(ג)(5א) for 6-12) — counts addendum §2 note; plan
-      // owner-verify item "Exact פעוט age range". Never emit an unverified
-      // father count.
-      throw new InvalidTaxInputError(
-        'parentContext.regime',
-        `father פעוט schedule (§66(ג)(5) for a married father, §40(ב)(1א) for a ` +
-          `single father of a toddler) not yet owner-verified (the consolidated ` +
-          `ordinance texts disagree on the פעוט age range) — use additionalCreditPoints ` +
-          `for this filer's verified child points`,
-      );
+      const twelfths = childPointTwelfths(age, 'other');
+      const claimant =
+        regime === 'marriedOtherSpouse'
+          ? '§66(ג)(5) — אב'
+          : '§40(ב)(1א) — אב במשפחה חד-הורית';
+      return [
+        {
+          reason: 'child',
+          twelfths,
+          label: `${childDescriptor(age)} (${claimant})${suffix}`,
+        },
+      ];
+    }
 
     case 'separatedNonEntitled': {
       // source: allocation addendum §2 — §40(ב)(2): if כלכלה is split, the
@@ -399,13 +408,15 @@ export function flatAdditionTwelfths(context: ParentContextInput): FlatAdditionR
     });
   }
   if (context.receivesChildAllowance === true) {
-    // source: allocation addendum §1 — §66(ג)(3), routing only; count is
-    // owner-verify (see CHILD_ALLOWANCE_TWELFTHS).
+    // source: sah3184 addendum §3 — §40(א) (תיקון 99) + §33א: the קצבה
+    // points are NII-paid inside קצבת הילדים; verified statutory 0 in the
+    // tax computation (see CHILD_ALLOWANCE_TWELFTHS).
     rows.push({
       reason: 'childAllowance',
       twelfths: CHILD_ALLOWANCE_TWELFTHS,
       label:
-        'נקודות קצבה לבן הזוג הרשום (§66(ג)(3)) — הכמות טרם אומתה מול המקור, נרשם 0',
+        'נקודות הקצבה לבן הזוג הרשום (§66(ג)(3)) משולמות בידי המוסד לביטוח ' +
+        'לאומי במסגרת קצבת הילדים — אינן נזקפות בחישוב המס',
     });
   }
   return rows;

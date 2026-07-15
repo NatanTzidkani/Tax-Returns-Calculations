@@ -211,7 +211,7 @@ describe('allocateChildTwelfths — טופס 116ד birth-year deferral (mother o
     expect(() =>
       allocateChildTwelfths(
         { ageInTaxYear: 1, claimDeferredBirthYearPoint: true },
-        ctx('singleFatherOfToddler', { motherClaimsUnderSection1: false }),
+        ctx('singleFather', { motherClaimsUnderSection1: false }),
       ),
     ).toThrow(/non-transferable/);
   });
@@ -227,33 +227,51 @@ describe('allocateChildTwelfths — טופס 116ד birth-year deferral (mother o
 });
 
 describe('allocateChildTwelfths — father regimes (§66(ג)(5) / §40(ב)(1א))', () => {
-  it('marriedOtherSpouse throws: Schedule B ships disabled until the owner fixes the פעוט range', () => {
-    expect(() =>
-      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('marriedOtherSpouse')),
-    ).toThrow(/not yet owner-verified/);
-    expect(() =>
-      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('marriedOtherSpouse')),
-    ).toThrow(/additionalCreditPoints/);
+  // Schedule B enabled il-0.7.0: the father column is the tables' `other`
+  // column, ALL ages 0-17 — no פעוט gate exists in 2024/2025 law (sah3184
+  // addendum §1b/§1c: the definition was deleted from §40(ב)(3)).
+  it.each([
+    [0, 30, 'ילד שנולד בשנת המס'],
+    [1, 54, 'ילד בן 1'],
+    [3, 42, 'ילד בן 3'],
+    [5, 30, 'ילד בן 5'],
+    [6, 12, 'ילד בן 6'],
+    [17, 12, 'ילד בן 17'],
+  ] as Array<[number, number, string]>)(
+    'marriedOtherSpouse age %i → %i twelfths (§66(ג)(5), sah3184 addendum §1c)',
+    (age, twelfths, descriptor) => {
+      expect(allocateChildTwelfths({ ageInTaxYear: age }, ctx('marriedOtherSpouse'))).toEqual([
+        { reason: 'child', twelfths, label: `${descriptor} (§66(ג)(5) — אב)` },
+      ]);
+    },
+  );
+
+  it('marriedOtherSpouse age 18 → legitimate 0 (§66(ג)(5) has no adulthood-year row)', () => {
+    expect(allocateChildTwelfths({ ageInTaxYear: 18 }, ctx('marriedOtherSpouse'))).toEqual([
+      { reason: 'child', twelfths: 0, label: 'ילד בן 18 (§66(ג)(5) — אב)' },
+    ]);
   });
 
-  it('singleFatherOfToddler without the mother-claims guard zeroing it also throws', () => {
-    expect(() =>
-      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('singleFatherOfToddler')),
-    ).toThrow(/not yet owner-verified/);
-    expect(() =>
+  it('singleFather computes the same column under §40(ב)(1א) (mother-claims true or undeclared)', () => {
+    expect(allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('singleFather'))).toEqual([
+      { reason: 'child', twelfths: 54, label: 'ילד בן 1 (§40(ב)(1א) — אב במשפחה חד-הורית)' },
+    ]);
+    expect(
       allocateChildTwelfths(
-        { ageInTaxYear: 1 },
-        ctx('singleFatherOfToddler', { motherClaimsUnderSection1: true }),
+        { ageInTaxYear: 6 },
+        ctx('singleFather', { motherClaimsUnderSection1: true }),
       ),
-    ).toThrow(/not yet owner-verified/);
+    ).toEqual([
+      { reason: 'child', twelfths: 12, label: 'ילד בן 6 (§40(ב)(1א) — אב במשפחה חד-הורית)' },
+    ]);
   });
 
-  it('singleFatherOfToddler with motherClaimsUnderSection1:false → 0 with an explanatory label', () => {
-    // §40(ב)(1א) proviso: when the toddler's resident mother is not entitled
+  it('singleFather with motherClaimsUnderSection1:false → 0 with an explanatory label', () => {
+    // §40(ב)(1א) proviso: when the child's resident mother is not entitled
     // under (1), the points attach to HER income — this filer gets none.
     const rows = allocateChildTwelfths(
       { ageInTaxYear: 1 },
-      ctx('singleFatherOfToddler', { motherClaimsUnderSection1: false }),
+      ctx('singleFather', { motherClaimsUnderSection1: false }),
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ reason: 'child', twelfths: 0 });
@@ -268,18 +286,10 @@ describe('allocateChildTwelfths — father regimes (§66(ג)(5) / §40(ב)(1א))
       expect(() =>
         allocateChildTwelfths(
           { ageInTaxYear: age },
-          ctx('singleFatherOfToddler', { motherClaimsUnderSection1: false }),
+          ctx('singleFather', { motherClaimsUnderSection1: false }),
         ),
       ).toThrow(InvalidTaxInputError);
     }
-  });
-
-  it('the singleFatherOfToddler disabled-throw cites §40(ב)(1א), not only §66(ג)(5)', () => {
-    // Reviewer finding: the surfaced 400 must name the paragraph that
-    // actually governs this regime.
-    expect(() =>
-      allocateChildTwelfths({ ageInTaxYear: 1 }, ctx('singleFatherOfToddler')),
-    ).toThrow(/§40\(ב\)\(1א\)/);
   });
 });
 
@@ -348,17 +358,18 @@ describe('flatAdditionTwelfths — §40(ב)(1ב) / §40(ב)(2) / §40א / §66(�
     ]);
   });
 
-  it('receivesChildAllowance yields the §66(ג)(3) row as 0 + TODO label (count owner-verify)', () => {
-    // Routing is primary-confirmed (בן-זוג-רשום only) but the current קצבה
-    // point COUNT is not — ships as 0 with a loud placeholder label, never a
-    // guessed number (plan owner-verify checklist).
+  it('receivesChildAllowance yields the §66(ג)(3) row at the VERIFIED statutory 0 (NII-paid)', () => {
+    // il-0.7.0: no longer an owner-verify placeholder — §40(א) קצבה points
+    // are paid by the NII inside קצבת הילדים (תיקון 99/1994, sah3184 addendum
+    // §3), never a return-side credit. The row stays as an audit line.
     const rows = flatAdditionTwelfths(
       ctx('marriedRegisteredSpouse', { receivesChildAllowance: true }),
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ reason: 'childAllowance', twelfths: 0 });
     expect(rows[0]!.label).toContain('§66(ג)(3)');
-    expect(rows[0]!.label).toContain('טרם אומתה');
+    expect(rows[0]!.label).toContain('ביטוח לאומי');
+    expect(rows[0]!.label).not.toContain('טרם אומתה');
   });
 
   it('regimes without flat additions yield no rows', () => {

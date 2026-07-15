@@ -32,14 +32,14 @@ import {
 //   §1.1 / §3.1.
 // - Child-point parent allocation (§66(ג)/§40(ב)/§40א regime → schedule,
 //   flat additions, טופס 116ד deferral): ../rules/child-allocation.ts, citing
-//   docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md.
+//   docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md
+//   and the 2026-07-14 sah3184 addendum (il-0.7.0: all age bands and both
+//   parent columns enabled; קצבה verified statutory 0).
 // - Degrees (§40ג-§40ה bachelor/master/vocational claim windows):
 //   ../rules/degree-credit-points.ts, citing
 //   docs/superpowers/research/2026-07-13-degrees-40g-addendum.md.
-// The 6-17 child band, the father §66(ג)(5) פעוט schedule, the §66(ג)(3)
-// קצבה count, medicine/direct-track PhD, and pre-2014 completions are NOT
-// computed here — the reviewer passes their verified total via
-// additionalCreditPoints.
+// Medicine/direct-track PhD and pre-2014 completions are NOT computed here —
+// the reviewer passes their verified total via additionalCreditPoints.
 
 const RESIDENT_TWELFTHS = 27; // 2.25 points
 const FEMALE_TWELFTHS = 6; // 0.5 point

@@ -249,19 +249,25 @@ describe('calculate — golden scenarios', () => {
     expect(res.refundAgorot).toBe(sh(12_000));
   });
 
-  it('a father regime with structured children fails loud end-to-end (Schedule B disabled)', () => {
-    expect(() =>
-      calculate(
-        baseInput({
-          taxpayer: {
-            isIsraeliResident: true,
-            gender: 'male',
-            parentContext: { regime: 'marriedOtherSpouse' },
-            children: [{ ageInTaxYear: 1 }],
-          },
-        }),
-      ),
-    ).toThrow(/not yet owner-verified/);
+  it('a father regime with structured children computes end-to-end (Schedule B enabled, il-0.7.0)', () => {
+    const res = calculate(
+      baseInput({
+        taxpayer: {
+          isIsraeliResident: true,
+          gender: 'male',
+          parentContext: { regime: 'marriedOtherSpouse' },
+          children: [{ ageInTaxYear: 1 }, { ageInTaxYear: 7 }],
+        },
+      }),
+    );
+    // resident 27 + age-1 child 54 + age-7 child 12 (§66(ג)(5), sah3184
+    // addendum §1c) = 93 twelfths = 7.75 points.
+    expect(res.creditPoints.points).toBe(7.75);
+    expect(res.creditPoints.breakdown).toContainEqual({
+      reason: 'child',
+      points: 1,
+      label: 'ילד בן 7 (§66(ג)(5) — אב)',
+    });
   });
 
   it('exposes a form 1301 field map with verified official codes', () => {

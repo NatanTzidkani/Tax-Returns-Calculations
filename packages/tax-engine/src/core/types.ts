@@ -41,9 +41,9 @@ export interface TaxpayerInput {
   isIsraeliResident: boolean;
   gender: 'male' | 'female';
   /**
-   * Extra credit points beyond what the engine computes (degrees, 6-17
-   * children, oleh clock-pausing…), in units of 0.25. Remains the reviewer's
-   * catch-all for every category not yet modelled.
+   * Extra credit points beyond what the engine computes (medicine/direct-
+   * track PhD degrees, oleh clock-pausing…), in units of 0.25. Remains the
+   * reviewer's catch-all for every category not yet modelled.
    */
   additionalCreditPoints?: number;
   /**
@@ -59,7 +59,7 @@ export interface TaxpayerInput {
       | 'marriedRegisteredSpouse' // §66(ג)(4) — full ages 0-18 (Schedule A)
       | 'marriedOtherSpouse' // §66(ג)(5) — פעוט only (Schedule B, DISABLED pending owner-verify)
       | 'singleParent' // §40(ב)(1)+(1ב)
-      | 'singleFatherOfToddler' // §40(ב)(1א)
+      | 'singleFather' // §40(ב)(1א)
       | 'separatedEntitled' // §40(ב)(2), the (1)-entitled parent
       | 'separatedNonEntitled'; // §40(ב)(2), split כלכלה
     /** §66(ג)(3): this filer is the בן-זוג-רשום receiving the NII קצבה.
@@ -71,16 +71,16 @@ export interface TaxpayerInput {
      *  worksheet only — child points are fixed per-parent, never a
      *  splittable pool (allocation addendum §3). */
     separateCalculation?: boolean;
-    /** §40(ב)(1א) guard: for singleFatherOfToddler, whether the toddler's
-     *  resident mother is entitled under (1). false → the father's פעוט
-     *  points attach to HER income, so this filer gets 0. */
+    /** §40(ב)(1א) guard: for singleFather, whether the child's resident
+     *  mother is entitled under (1). false → the father's child points
+     *  attach to HER income, so this filer gets 0. */
     motherClaimsUnderSection1?: boolean;
   };
   /**
    * Children for the §40/§66(ג) child credit points. Counts come from the
-   * age→point table (report §1.1); WHICH schedule applies comes from
-   * `parentContext.regime` (allocation addendum). Ages 6-17 are not yet
-   * owner-verified and throw; use `additionalCreditPoints` for them.
+   * age→point table (all ages 0-18 since il-0.7.0 — sah3184 addendum);
+   * WHICH schedule applies comes from `parentContext.regime` (allocation
+   * addendum).
    */
   children?: Array<{
     ageInTaxYear: number;
