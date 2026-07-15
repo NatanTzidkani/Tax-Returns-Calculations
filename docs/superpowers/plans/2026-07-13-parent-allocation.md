@@ -31,6 +31,36 @@ This keeps the money-critical path free of any inference the app cannot audit.
 
 ---
 
+## ⚠️ Implementation reconciliation (2026-07-14, added before execution)
+
+This plan was written **before** the downstream wiring landed
+(`docs/superpowers/plans/2026-07-14-credit-points-wiring.md`, merged
+2026-07-14). Three statements below are therefore stale and are corrected
+here — the rest of the plan stands:
+
+1. **ENGINE_VERSION:** the base plan landed as `il-0.4.0` and degrees as
+   `il-0.5.0`; this increment is **`il-0.6.0`**.
+2. **"Downstream, NOT in this plan" is superseded.** `children` is no longer
+   engine-only: the shared `CalculateRequestSchema`, the API type-drift
+   assertions (`packages/api/test/credit-points-wiring.test.ts`), and the
+   worksheet form all carry `children: [{ ageInTaxYear, role }]` today.
+   Removing the `role` placeholder therefore propagates through **this**
+   increment: shared Zod gains `parentContext` + the per-child context and
+   drops `role`; the api assertions/tests update; the worksheet form replaces
+   the per-child role select with a filer-level regime picker (+ conditional
+   flags/fields) and adds i18n fallbacks for the new breakdown reasons. Same
+   structural-only boundary as the wiring plan — no legal rule in Zod/UI.
+3. **"Existing base-plan test cases stay green unchanged" is impossible** —
+   they use `role`. They are updated to express the same numeric expectations
+   through Schedule-A regimes (e.g. `role: 'custodial'` →
+   `parentContext.regime: 'marriedRegisteredSpouse'`); the expected numbers
+   themselves must not change.
+
+The typo'd reason token in the breakdown list below (`'maintenanceMoveda' →
+'maintenanceShare'`) is resolved as **`'maintenanceShare'`**.
+
+---
+
 ## Source of truth for every allocation rule in this plan
 
 `docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md`
