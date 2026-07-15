@@ -146,10 +146,8 @@ describe('calculate — golden scenarios', () => {
         taxpayer: {
           isIsraeliResident: true,
           gender: 'male',
-          children: [
-            { ageInTaxYear: 2, role: 'custodial' },
-            { ageInTaxYear: 4, role: 'custodial' },
-          ],
+          parentContext: { regime: 'marriedRegisteredSpouse' },
+          children: [{ ageInTaxYear: 2 }, { ageInTaxYear: 4 }],
           aliyah: { aliyahYear: 2025, aliyahMonth: 1, scheduleVariant: 'from2022' },
         },
       }),

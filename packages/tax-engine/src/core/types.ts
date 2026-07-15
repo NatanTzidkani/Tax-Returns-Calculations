@@ -47,12 +47,54 @@ export interface TaxpayerInput {
    */
   additionalCreditPoints?: number;
   /**
-   * Children for the §40 age→point table (report §1.1). The reviewer supplies
-   * each child's `role` explicitly — the engine does NOT decide who is
-   * custodial (parent allocation is deferred, report §1.2). Ages 6-17 are not
-   * yet owner-verified and throw; use `additionalCreditPoints` for them.
+   * Marital/custody context for child credit-point allocation. Reviewer-
+   * supplied; the engine picks the statutory paragraph from `regime` — it
+   * never infers custody. Required when `children` is non-empty; absent
+   * (with no children) → no child points from structured input
+   * (additionalCreditPoints remains the fallback).
+   * source: docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md
    */
-  children?: Array<{ ageInTaxYear: number; role: 'custodial' | 'other' }>;
+  parentContext?: {
+    regime:
+      | 'marriedRegisteredSpouse' // §66(ג)(4) — full ages 0-18 (Schedule A)
+      | 'marriedOtherSpouse' // §66(ג)(5) — פעוט only (Schedule B, DISABLED pending owner-verify)
+      | 'singleParent' // §40(ב)(1)+(1ב)
+      | 'singleFatherOfToddler' // §40(ב)(1א)
+      | 'separatedEntitled' // §40(ב)(2), the (1)-entitled parent
+      | 'separatedNonEntitled'; // §40(ב)(2), split כלכלה
+    /** §66(ג)(3): this filer is the בן-זוג-רשום receiving the NII קצבה.
+     *  Count is owner-verify — surfaces as a 0-point TODO worksheet row. */
+    receivesChildAllowance?: boolean;
+    /** §40א: divorced, pays מזונות, remarried → +1 point. */
+    divorcedPaysMaintenanceRemarried?: boolean;
+    /** §66(ג)(1)/(1א): the filer is computed on a חישוב נפרד. Labels the
+     *  worksheet only — child points are fixed per-parent, never a
+     *  splittable pool (allocation addendum §3). */
+    separateCalculation?: boolean;
+    /** §40(ב)(1א) guard: for singleFatherOfToddler, whether the toddler's
+     *  resident mother is entitled under (1). false → the father's פעוט
+     *  points attach to HER income, so this filer gets 0. */
+    motherClaimsUnderSection1?: boolean;
+  };
+  /**
+   * Children for the §40/§66(ג) child credit points. Counts come from the
+   * age→point table (report §1.1); WHICH schedule applies comes from
+   * `parentContext.regime` (allocation addendum). Ages 6-17 are not yet
+   * owner-verified and throw; use `additionalCreditPoints` for them.
+   */
+  children?: Array<{
+    ageInTaxYear: number;
+    /** §40(ב)(2) separatedNonEntitled only: this parent's share of כלכלה,
+     *  0..1 — the one point is granted × this fraction. Required in that
+     *  regime; loud throw if supplied in any other. */
+    maintenanceShare?: number;
+    /** טופס 116ד: the mother defers this child's ONE birth-year point to the
+     *  next tax year. Age 0 + mother Schedule-A regimes only. */
+    deferBirthYearPoint?: boolean;
+    /** טופס 116ד: this filer CLAIMS the point deferred from the prior year
+     *  for this child (age 1 in the claim year). Mother-only, same guard. */
+    claimDeferredBirthYearPoint?: boolean;
+  }>;
   /**
    * §35 oleh schedule input. `scheduleVariant` is an explicit reviewer input,
    * NOT derived from the date — the pre-2022 cohort transition rule is still
@@ -138,7 +180,19 @@ export interface IncomeTaxResult {
 }
 
 export interface CreditPointsBreakdownRow {
-  reason: 'resident' | 'female' | 'additional' | 'child' | 'oleh' | 'degree';
+  reason:
+    | 'resident'
+    | 'female'
+    | 'additional'
+    | 'child'
+    | 'oleh'
+    | 'degree'
+    | 'childAllowance' // §66(ג)(3) — count owner-verify, 0-point TODO row
+    | 'singleParentBonus' // §40(ב)(1ב)
+    | 'separatedBonus' // §40(ב)(2) +1
+    | 'maintenanceShare' // §40(ב)(2) fractional (split כלכלה)
+    | 'section40aBonus' // §40א
+    | 'birthYearDeferral'; // טופס 116ד (negative in the defer year)
   points: number;
   /** Hebrew worksheet label saying WHY the points were granted (no black box). */
   label?: string;

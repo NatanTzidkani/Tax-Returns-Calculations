@@ -7,7 +7,10 @@ import type {
   TaxpayerInput,
 } from '../../../core/types';
 import {
-  childPointTwelfths,
+  allocateChildTwelfths,
+  flatAdditionTwelfths,
+} from '../rules/child-allocation';
+import {
   olehQualifyingMonthsInTaxYear,
   olehTwelfthsForTaxYear,
 } from '../rules/credit-points-tables';
@@ -26,21 +29,19 @@ import {
 // - Children (§40) and oleh (§35) tables: ../rules/credit-points-tables.ts,
 //   citing docs/superpowers/research/2026-07-13-credit-points-verification.md
 //   §1.1 / §3.1.
+// - Child-point parent allocation (§66(ג)/§40(ב)/§40א regime → schedule,
+//   flat additions, טופס 116ד deferral): ../rules/child-allocation.ts, citing
+//   docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md.
 // - Degrees (§40ג-§40ה bachelor/master/vocational claim windows):
 //   ../rules/degree-credit-points.ts, citing
 //   docs/superpowers/research/2026-07-13-degrees-40g-addendum.md.
-// The 6-17 child band, parent allocation, medicine/direct-track PhD, and
-// pre-2014 completions are NOT computed here — the reviewer passes their
-// verified total via additionalCreditPoints.
+// The 6-17 child band, the father §66(ג)(5) פעוט schedule, the §66(ג)(3)
+// קצבה count, medicine/direct-track PhD, and pre-2014 completions are NOT
+// computed here — the reviewer passes their verified total via
+// additionalCreditPoints.
 
 const RESIDENT_TWELFTHS = 27; // 2.25 points
 const FEMALE_TWELFTHS = 6; // 0.5 point
-
-function childLabel(ageInTaxYear: number, role: 'custodial' | 'other'): string {
-  const who = role === 'custodial' ? 'הורה משמורן' : 'הורה אחר';
-  const child = ageInTaxYear === 0 ? 'ילד שנולד בשנת המס' : `ילד בן ${ageInTaxYear}`;
-  return `${child} (${who})`;
-}
 
 export function computeCreditPoints(
   taxpayer: TaxpayerInput,
@@ -68,19 +69,41 @@ export function computeCreditPoints(
     }
   }
 
-  for (const child of taxpayer.children ?? []) {
-    // Eligibility (age band) is enforced by the helper — it throws loudly
-    // outside 0-18 and for the not-yet-owner-verified 6-17 band.
-    const childTwelfths = childPointTwelfths(child.ageInTaxYear, child.role);
-    // Age 18 + other parent is the table's one legitimate 0 — same
-    // no-zero-rows convention as the oleh and degree branches.
-    if (childTwelfths > 0) {
-      breakdown.push({
-        reason: 'child',
-        points: childTwelfths / 12,
-        label: childLabel(child.ageInTaxYear, child.role),
-      });
-      twelfths += childTwelfths;
+  const children = taxpayer.children ?? [];
+  const parentContext = taxpayer.parentContext;
+  if (children.length > 0 && parentContext === undefined) {
+    throw new InvalidTaxInputError(
+      'taxpayer.parentContext',
+      'required when structured children are supplied — the engine never ' +
+        'infers the §66(ג)/§40 regime; declare it, or enter the verified ' +
+        'child points via additionalCreditPoints',
+    );
+  }
+  if (parentContext !== undefined) {
+    for (const child of children) {
+      // The allocation helper owns all regime/age/share/deferral guards and
+      // fails loud (incl. the not-yet-owner-verified 6-17 band and father
+      // Schedule B). Its legitimate 0s (zero-share, father-zeroed) follow
+      // the no-zero-rows convention; the NEGATIVE טופס 116ד deferral row is
+      // real money and must flow through.
+      for (const row of allocateChildTwelfths(child, parentContext)) {
+        if (row.twelfths !== 0) {
+          breakdown.push({
+            reason: row.reason,
+            points: row.twelfths / 12,
+            label: row.label,
+          });
+          twelfths += row.twelfths;
+        }
+      }
+    }
+    // Flat per-filer additions (§40(ב)(1ב)/§40(ב)(2)/§40א/§66(ג)(3)). Pushed
+    // as returned: the §66(ג)(3) childAllowance row deliberately surfaces at
+    // 0 points with its TODO label — an owner-verify placeholder the
+    // worksheet must show, not a "nothing applies" zero.
+    for (const row of flatAdditionTwelfths(parentContext)) {
+      breakdown.push({ reason: row.reason, points: row.twelfths / 12, label: row.label });
+      twelfths += row.twelfths;
     }
   }
 

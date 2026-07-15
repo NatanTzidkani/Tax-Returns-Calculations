@@ -65,14 +65,19 @@ describe('computeCreditPoints', () => {
     ).toThrow(InvalidTaxInputError);
   });
 
-  // Structured children/oleh inputs (report §1.1 / §3.1 via the rules module).
+  // Structured children inputs (counts per report §1.1 via the tables module;
+  // allocation per the §66(ג)/§40 regime via rules/child-allocation, citing
+  // docs/superpowers/research/2026-07-13-credit-points-allocation-addendum.md).
+  // These carry the base-plan cases' NUMERIC expectations, re-expressed
+  // through Schedule-A regimes after `role` was superseded by `parentContext`.
 
   it('adds a child age 2 (4.5 pts) to a resident man → 6.75 points', () => {
     const res = computeCreditPoints(
       {
         isIsraeliResident: true,
         gender: 'male',
-        children: [{ ageInTaxYear: 2, role: 'custodial' }],
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2 }],
       },
       y2025,
     );
@@ -82,19 +87,17 @@ describe('computeCreditPoints', () => {
     expect(res.breakdown).toContainEqual({
       reason: 'child',
       points: 4.5,
-      label: 'ילד בן 2 (הורה משמורן)',
+      label: 'ילד בן 2 (§66(ג)(4) — אם)',
     });
   });
 
-  it('labels the other-parent role and a birth-year child', () => {
+  it('labels each child with the governing paragraph, incl. a birth-year child', () => {
     const res = computeCreditPoints(
       {
         isIsraeliResident: true,
         gender: 'male',
-        children: [
-          { ageInTaxYear: 3, role: 'other' },
-          { ageInTaxYear: 0, role: 'custodial' },
-        ],
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 3 }, { ageInTaxYear: 0 }],
       },
       y2025,
     );
@@ -102,40 +105,42 @@ describe('computeCreditPoints', () => {
     expect(res.breakdown).toContainEqual({
       reason: 'child',
       points: 3.5,
-      label: 'ילד בן 3 (הורה אחר)',
+      label: 'ילד בן 3 (§66(ג)(4) — אם)',
     });
     expect(res.breakdown).toContainEqual({
       reason: 'child',
       points: 2.5,
-      label: 'ילד שנולד בשנת המס (הורה משמורן)',
+      label: 'ילד שנולד בשנת המס (§66(ג)(4) — אם)',
     });
   });
 
-  it('an age-18 child of the other parent (0 twelfths) adds no breakdown row', () => {
-    // Same no-zero-rows convention as the oleh and degree branches: the one
-    // legitimate 0 in the child table must not surface as a 0-point line.
+  it('a zero-share separated child (0 twelfths) adds no breakdown row', () => {
+    // Same no-zero-rows convention as the oleh and degree branches: a
+    // legitimate 0 from the allocator must not surface as a 0-point line.
     const res = computeCreditPoints(
       {
         isIsraeliResident: true,
         gender: 'male',
-        children: [{ ageInTaxYear: 18, role: 'other' }],
+        parentContext: { regime: 'separatedNonEntitled' },
+        children: [{ ageInTaxYear: 18, maintenanceShare: 0 }],
       },
       y2025,
     );
     expect(res.points).toBe(2.25);
-    expect(res.breakdown.filter((r) => r.reason === 'child')).toEqual([]);
+    expect(res.breakdown).toEqual([{ reason: 'resident', points: 2.25 }]);
   });
 
   it('a child in the not-yet-verified 6-17 band propagates the loud throw', () => {
-    // Delta from the plan: 6-17 ships DISABLED (secondary sources only) —
-    // a resident woman with a child age 6 role "other" throws instead of
-    // yielding 3.75 points.
+    // Delta carried from the base plan: 6-17 ships DISABLED (secondary
+    // sources only) — a Schedule-A child age 6 throws instead of yielding
+    // points.
     expect(() =>
       computeCreditPoints(
         {
           isIsraeliResident: true,
           gender: 'female',
-          children: [{ ageInTaxYear: 6, role: 'other' }],
+          parentContext: { regime: 'marriedRegisteredSpouse' },
+          children: [{ ageInTaxYear: 6 }],
         },
         y2025,
       ),
@@ -148,7 +153,185 @@ describe('computeCreditPoints', () => {
         {
           isIsraeliResident: true,
           gender: 'male',
-          children: [{ ageInTaxYear: 19, role: 'custodial' }],
+          parentContext: { regime: 'marriedRegisteredSpouse' },
+          children: [{ ageInTaxYear: 19 }],
+        },
+        y2025,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('resident woman, marriedRegisteredSpouse, children 2 & 4 → 9.75 labelled points', () => {
+    // 33 (resident woman) + 54 (age 2) + 30 (age 4) = 117 twelfths.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2 }, { ageInTaxYear: 4 }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(9.75);
+    expect(res.valueAgorot).toBe(117 * 24_200);
+    expect(res.breakdown).toEqual([
+      { reason: 'resident', points: 2.25 },
+      { reason: 'female', points: 0.5 },
+      { reason: 'child', points: 4.5, label: 'ילד בן 2 (§66(ג)(4) — אם)' },
+      { reason: 'child', points: 2.5, label: 'ילד בן 4 (§66(ג)(4) — אם)' },
+    ]);
+  });
+
+  it('singleParent adds the +1 §40(ב)(1ב) bonus row on top of the schedule', () => {
+    // 27 (resident man) + 54 (age 2) + 12 (bonus) = 93 twelfths = 7.75 pts.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        parentContext: { regime: 'singleParent' },
+        children: [{ ageInTaxYear: 2 }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(7.75);
+    expect(res.breakdown).toContainEqual({
+      reason: 'singleParentBonus',
+      points: 1,
+      label: 'נקודת זיכוי נוספת — משפחה חד-הורית (§40(ב)(1ב))',
+    });
+  });
+
+  it('separated parents: entitled +1 bonus; non-entitled fractional מזונות rows', () => {
+    const entitled = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: { regime: 'separatedEntitled' },
+        children: [{ ageInTaxYear: 3 }],
+      },
+      y2025,
+    );
+    // 33 + 42 + 12 = 87 twelfths.
+    expect(entitled.points).toBe(87 / 12);
+    expect(entitled.breakdown).toContainEqual({
+      reason: 'separatedBonus',
+      points: 1,
+      label: 'נקודת זיכוי נוספת — הורים החיים בנפרד (§40(ב)(2))',
+    });
+
+    const nonEntitled = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        parentContext: { regime: 'separatedNonEntitled' },
+        children: [{ ageInTaxYear: 8, maintenanceShare: 0.4 }],
+      },
+      y2025,
+    );
+    // 27 + round(12 × 0.4) = 5 → 32 twelfths.
+    expect(nonEntitled.points).toBe(32 / 12);
+    expect(nonEntitled.breakdown).toContainEqual({
+      reason: 'maintenanceShare',
+      points: 5 / 12,
+      label: 'ילד בן 8 (§40(ב)(2) — הורה שאינו זכאי, 40% כלכלה)',
+    });
+  });
+
+  it('§40א and the §66(ג)(3) placeholder surface as flat rows without children', () => {
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: {
+          regime: 'marriedRegisteredSpouse',
+          divorcedPaysMaintenanceRemarried: true,
+          receivesChildAllowance: true,
+        },
+      },
+      y2025,
+    );
+    // 33 + 12 (§40א) + 0 (§66(ג)(3) owner-verify placeholder) = 45 twelfths.
+    expect(res.points).toBe(3.75);
+    expect(res.breakdown).toContainEqual({
+      reason: 'section40aBonus',
+      points: 1,
+      label: 'נקודת זיכוי — גרוש המשלם מזונות והנשוי לבן זוג אחר (§40א)',
+    });
+    // The קצבה row deliberately shows at 0 points with its TODO label — an
+    // owner-verify placeholder, not a "nothing applies" zero.
+    const allowanceRow = res.breakdown.find((r) => r.reason === 'childAllowance');
+    expect(allowanceRow?.points).toBe(0);
+    expect(allowanceRow?.label).toContain('§66(ג)(3)');
+  });
+
+  it('separateCalculation changes the labels, never the count', () => {
+    const base = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2 }],
+      },
+      y2025,
+    );
+    const separate = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: { regime: 'marriedRegisteredSpouse', separateCalculation: true },
+        children: [{ ageInTaxYear: 2 }],
+      },
+      y2025,
+    );
+    expect(separate.points).toBe(base.points);
+    expect(separate.valueAgorot).toBe(base.valueAgorot);
+    const childRow = separate.breakdown.find((r) => r.reason === 'child');
+    expect(childRow?.label).toContain('חישוב נפרד');
+  });
+
+  it('the birth-year deferral flows through as a negative row without breaking the total', () => {
+    // 33 (resident woman) + 30 (age 0) − 12 (טופס 116ד deferral) = 51.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'female',
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 0, deferBirthYearPoint: true }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(51 / 12);
+    expect(res.valueAgorot).toBe(51 * 24_200);
+    expect(res.breakdown).toContainEqual({
+      reason: 'birthYearDeferral',
+      points: -1,
+      label: 'דחיית נקודת זיכוי אחת משנת הלידה לשנת המס הבאה (טופס 116ד)',
+    });
+  });
+
+  it('structured children with no parentContext throw loudly', () => {
+    expect(() =>
+      computeCreditPoints(
+        {
+          isIsraeliResident: true,
+          gender: 'female',
+          children: [{ ageInTaxYear: 2 }],
+        },
+        y2025,
+      ),
+    ).toThrow(InvalidTaxInputError);
+  });
+
+  it('an unknown regime throws loudly', () => {
+    expect(() =>
+      computeCreditPoints(
+        {
+          isIsraeliResident: true,
+          gender: 'female',
+          parentContext: {
+            regime: 'jointCustody' as 'marriedRegisteredSpouse',
+          },
+          children: [{ ageInTaxYear: 2 }],
         },
         y2025,
       ),
@@ -181,7 +364,8 @@ describe('computeCreditPoints', () => {
         isIsraeliResident: true,
         gender: 'male',
         additionalCreditPoints: 0.25,
-        children: [{ ageInTaxYear: 2, role: 'custodial' }],
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2 }],
         aliyah: { aliyahYear: 2025, aliyahMonth: 5, scheduleVariant: 'from2022' },
       },
       y2025,
@@ -289,7 +473,8 @@ describe('computeCreditPoints', () => {
         isIsraeliResident: true,
         gender: 'male',
         additionalCreditPoints: 0.25,
-        children: [{ ageInTaxYear: 2, role: 'custodial' }],
+        parentContext: { regime: 'marriedRegisteredSpouse' },
+        children: [{ ageInTaxYear: 2 }],
         degrees: [{ track: 'bachelor', completionYear: 2023, studyYears: 3 }],
       },
       y2025,
