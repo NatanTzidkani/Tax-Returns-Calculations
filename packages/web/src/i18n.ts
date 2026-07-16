@@ -140,6 +140,16 @@ export const resources = {
         additionalPointsHelp:
           'השדות המובנים למטה מכסים ילדים (גילאי 0-18) לפי ההקשר ההורי, עולה חדש ותואר ראשון/שני/תעודת מקצוע. שדה זה נותר לכל השאר — מסלולי דוקטורט וסיום לימודים לפני 2014 — מזינים כאן סך כולל מאומת (בכפולות של 0.25).',
         calculateButton: 'חישוב',
+        // --- Stored taxpayer profile (pre-fill only; plan
+        // 2026-07-14-taxpayer-profile.md). The profile never enters a
+        // calculation server-side — the reviewer confirms everything.
+        prefillNotice:
+          'הטופס מולא מראש מהפרופיל השמור; גילאי הילדים נגזרו משנת הלידה עבור שנת מס זו. יש לאשר את כל הפרטים לפני החישוב.',
+        prefillOmittedChildren:
+          'ילדים שגילם מחוץ לטווח 0-18 בשנת מס זו הושמטו מהטופס ({{count}}).',
+        saveProfileButton: 'שמור לפרופיל',
+        profileSaved: 'פרטי הנישום נשמרו לפרופיל.',
+        profileSaveFailed: 'שמירת הפרופיל נכשלה.',
         invalidPoints:
           'נקודות הזיכוי הנוספות חייבות להיות מספר לא שלילי בכפולות של 0.25',
         // --- Structured credit-point inputs (children §40 / oleh §35 /

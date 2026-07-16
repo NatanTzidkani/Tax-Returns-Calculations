@@ -250,7 +250,7 @@ export function TaxYearDetail() {
           titleKey="taxYearDetail.dataPanel"
           bodyKey="taxYearDetail.dataPlaceholder"
         />
-        <WorksheetPanel taxYearId={taxYearId} />
+        <WorksheetPanel taxYearId={taxYearId} year={taxYear?.year} />
       </div>
     </main>
   );

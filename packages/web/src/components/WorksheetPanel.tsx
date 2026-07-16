@@ -6,17 +6,29 @@ import {
   formatILS,
   type ParentContext,
   shekelsToAgorot,
+  TaxpayerProfileSchema,
 } from '@taxreturns/shared';
 import type { BracketRow, TaxReturnResult } from '@taxreturns/tax-engine';
 import { Label } from 'radix-ui';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   type CalculateRequestBody,
   calculateTaxYear,
   getCalculation,
+  getTaxpayerProfile,
+  saveTaxpayerProfile,
 } from '../api/client';
+import {
+  type ChildRow,
+  type DegreeRow,
+  electedYearVisible,
+  formStateToProfile,
+  profileToTaxpayerFormState,
+  type TaxpayerFormPrefill,
+  type TaxpayerFormState,
+} from '../lib/taxpayer-profile';
 
 /**
  * The calculation worksheet (Plan 5): a small taxpayer form + the full,
@@ -113,29 +125,8 @@ function requiredInt(value: string): number {
   return Number(trimmed);
 }
 
-/**
- * The elected-claim-year input is shown only for completion years ≤ 2022
- * (the 2014-2022 cohort's single-elective rule). This is a DISPLAY
- * convenience only — the value is sent verbatim and the ENGINE remains the
- * validator of the cohort rules (plan:
- * docs/superpowers/plans/2026-07-14-credit-points-wiring.md).
- */
-function electedYearVisible(completionYear: string): boolean {
-  const trimmed = completionYear.trim();
-  if (trimmed === '') return false;
-  const parsed = Number(trimmed);
-  return Number.isInteger(parsed) && parsed <= 2022;
-}
-
-/** Worksheet-form row state (strings: controlled inputs, parsed on submit). */
-interface ChildRow {
-  age: string;
-  /** §40(ב)(2) share of כלכלה — sent only under separatedNonEntitled. */
-  maintenanceShare: string;
-  /** טופס 116ד flags — sent only when checked (omitted, never false). */
-  deferBirthYearPoint: boolean;
-  claimDeferredBirthYearPoint: boolean;
-}
+// ChildRow / DegreeRow / electedYearVisible moved to ../lib/taxpayer-profile
+// so the profile pre-fill mapping and this form share ONE row-state shape.
 
 type ParentRegime = ParentContext['regime'];
 
@@ -148,16 +139,6 @@ const PARENT_REGIMES: readonly ParentRegime[] = [
   'separatedEntitled',
   'separatedNonEntitled',
 ];
-
-interface DegreeRow {
-  track: 'bachelor' | 'master' | 'vocational';
-  completionYear: string;
-  studyYears: string;
-  electedClaimYear: string;
-  internship: boolean;
-  internshipStart: string;
-  internshipEnd: string;
-}
 
 const CHILD_AGES = Array.from({ length: 19 }, (_, age) => age);
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
@@ -238,31 +219,49 @@ function BracketsTable({ rows }: { rows: BracketRow[] }) {
 
 function TaxpayerForm({
   taxYearId,
+  year,
+  prefill,
   onCalculated,
 }: {
   taxYearId: string;
+  /** The tax YEAR NUMBER — needed for the profile's yearOfBirth arithmetic. */
+  year: number | undefined;
+  /** Stored-profile pre-fill (already derived for this year), or null. */
+  prefill: TaxpayerFormPrefill | null;
   onCalculated: (excludedDonations: number) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [gender, setGender] = useState<'male' | 'female'>('male');
+  // Pre-fill happens via useState INITIALIZERS (mount-time only): the stored
+  // profile is a suggestion the reviewer edits — nothing may later clobber
+  // those edits (plan: docs/superpowers/plans/2026-07-14-taxpayer-profile.md).
+  const init = prefill?.state;
+  const [gender, setGender] = useState<'male' | 'female'>(init?.gender ?? 'male');
   const [additionalPoints, setAdditionalPoints] = useState('');
   const [interest, setInterest] = useState('');
   const [interestWithheld, setInterestWithheld] = useState('');
-  const [children, setChildren] = useState<ChildRow[]>([]);
+  const [children, setChildren] = useState<ChildRow[]>(init?.children ?? []);
   // Filer-level parent-allocation context ('' = not declared → parentContext
   // omitted from the body; children may still submit — the engine's loud
   // children-require-parentContext rule is never pre-blocked here).
-  const [parentRegime, setParentRegime] = useState<'' | ParentRegime>('');
-  const [receivesAllowance, setReceivesAllowance] = useState(false);
-  const [maintenanceRemarried, setMaintenanceRemarried] = useState(false);
-  const [separateCalc, setSeparateCalc] = useState(false);
-  const [motherClaims, setMotherClaims] = useState(false);
-  const [aliyahOn, setAliyahOn] = useState(false);
-  const [aliyahYear, setAliyahYear] = useState('');
-  const [aliyahMonth, setAliyahMonth] = useState('1');
-  const [aliyahVariant, setAliyahVariant] = useState<'pre2022' | 'from2022'>('from2022');
-  const [degrees, setDegrees] = useState<DegreeRow[]>([]);
+  const [parentRegime, setParentRegime] = useState<'' | ParentRegime>(
+    init?.parentRegime ?? '',
+  );
+  const [receivesAllowance, setReceivesAllowance] = useState(
+    init?.receivesAllowance ?? false,
+  );
+  const [maintenanceRemarried, setMaintenanceRemarried] = useState(
+    init?.maintenanceRemarried ?? false,
+  );
+  const [separateCalc, setSeparateCalc] = useState(init?.separateCalc ?? false);
+  const [motherClaims, setMotherClaims] = useState(init?.motherClaims ?? false);
+  const [aliyahOn, setAliyahOn] = useState(init?.aliyahOn ?? false);
+  const [aliyahYear, setAliyahYear] = useState(init?.aliyahYear ?? '');
+  const [aliyahMonth, setAliyahMonth] = useState(init?.aliyahMonth ?? '1');
+  const [aliyahVariant, setAliyahVariant] = useState<'pre2022' | 'from2022'>(
+    init?.aliyahVariant ?? 'from2022',
+  );
+  const [degrees, setDegrees] = useState<DegreeRow[]>(init?.degrees ?? []);
   const [invalid, setInvalid] = useState<InvalidSection | null>(null);
   const mutation = useMutation({
     mutationFn: (body: CalculateRequestBody) => calculateTaxYear(taxYearId, body),
@@ -273,6 +272,31 @@ function TaxpayerForm({
       await queryClient.invalidateQueries({ queryKey: ['tax-years'] });
     },
   });
+  const saveProfile = useMutation({
+    mutationFn: (payload: Parameters<typeof saveTaxpayerProfile>[0]) =>
+      saveTaxpayerProfile(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['taxpayer-profile'] });
+    },
+  });
+
+  /** The current form state as the shared slice the profile mapping speaks. */
+  function currentFormState(): TaxpayerFormState {
+    return {
+      gender,
+      children,
+      parentRegime,
+      receivesAllowance,
+      maintenanceRemarried,
+      separateCalc,
+      motherClaims,
+      aliyahOn,
+      aliyahYear,
+      aliyahMonth,
+      aliyahVariant,
+      degrees,
+    };
+  }
 
   function updateChild(index: number, patch: Partial<ChildRow>) {
     setChildren((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -420,6 +444,16 @@ function TaxpayerForm({
     // number-input constraints (step/min) would otherwise block submit for a
     // step-invalid entry before our localized Hebrew message could show.
     <form onSubmit={onSubmit} noValidate className="mt-4 flex flex-col gap-3">
+      {prefill !== null ? (
+        <p className={amberNoticeClasses}>
+          {t('worksheet.prefillNotice')}
+          {prefill.omittedChildren > 0
+            ? ` ${t('worksheet.prefillOmittedChildren', {
+                count: prefill.omittedChildren,
+              })}`
+            : ''}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1.5">
           <Label.Root htmlFor="worksheet-gender-select" className={labelClasses}>
@@ -927,10 +961,36 @@ function TaxpayerForm({
         </div>
       </div>
 
-      <div className="border-t border-neutral-200 pt-3 dark:border-neutral-800">
+      <div className="flex flex-wrap items-center gap-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
         <button type="submit" disabled={mutation.isPending} className={primaryButtonClasses}>
           {t('worksheet.calculateButton')}
         </button>
+        {/* Save-to-profile is EXPLICIT and appears only after a successful
+            calculate: what gets persisted has just passed an engine run
+            (plan: 2026-07-14-taxpayer-profile.md, "explicit save" decision).
+            The year is required for the yearOfBirth arithmetic. */}
+        {mutation.isSuccess && year !== undefined ? (
+          <button
+            type="button"
+            disabled={saveProfile.isPending}
+            onClick={() => saveProfile.mutate(formStateToProfile(currentFormState(), year))}
+            className={secondaryButtonClasses}
+          >
+            {t('worksheet.saveProfileButton')}
+          </button>
+        ) : null}
+        {saveProfile.isSuccess ? (
+          <p role="status" className={mutedTextClasses}>
+            {t('worksheet.profileSaved')}
+          </p>
+        ) : null}
+        {saveProfile.isError ? (
+          <p role="alert" className={alertClasses}>
+            {saveProfile.error instanceof ApiError && saveProfile.error.message
+              ? saveProfile.error.message
+              : t('worksheet.profileSaveFailed')}
+          </p>
+        ) : null}
       </div>
       {invalid !== null ? (
         <p role="alert" className={alertClasses}>
@@ -1237,7 +1297,14 @@ function Worksheet({
   );
 }
 
-export function WorksheetPanel({ taxYearId }: { taxYearId: string }) {
+export function WorksheetPanel({
+  taxYearId,
+  year,
+}: {
+  taxYearId: string;
+  /** The tax year number — undefined only while the parent's year list loads. */
+  year?: number;
+}) {
   const { t } = useTranslation();
   // excludedDonations arrives only on the calculate response's metadata (the
   // GET has no mapping context), so it is kept from the last mutation.
@@ -1246,13 +1313,30 @@ export function WorksheetPanel({ taxYearId }: { taxYearId: string }) {
     queryKey: ['tax-years', taxYearId, 'calculation'],
     queryFn: () => getCalculation(taxYearId),
   });
+  // The stored profile is a pre-fill CONVENIENCE: a fetch error or an
+  // unparseable payload must never block the worksheet — both resolve to
+  // "no pre-fill" (empty form, as before the profile existed).
+  const profileQuery = useQuery({
+    queryKey: ['taxpayer-profile'],
+    queryFn: getTaxpayerProfile,
+    retry: false,
+  });
+  const prefill = useMemo<TaxpayerFormPrefill | null>(() => {
+    if (year === undefined || !profileQuery.data) return null;
+    const parsed = TaxpayerProfileSchema.safeParse(profileQuery.data.payload);
+    if (!parsed.success) return null;
+    return profileToTaxpayerFormState(parsed.data, year);
+  }, [profileQuery.data, year]);
 
   return (
     <section aria-labelledby="calculation-panel-title" className={panelClasses}>
       <h2 id="calculation-panel-title" className={panelHeadingClasses}>
         {t('taxYearDetail.calculationPanel')}
       </h2>
-      {calculationQuery.isPending ? (
+      {calculationQuery.isPending || profileQuery.isPending || year === undefined ? (
+        // year comes from the parent's tax-years query (the page's core
+        // data); mounting the form before it resolves would remount-and-wipe
+        // reviewer edits when it arrives (pre-fill runs in initializers).
         <p className={`mt-4 ${mutedTextClasses}`}>{t('common.loading')}</p>
       ) : calculationQuery.isError ? (
         <div role="alert" className={`mt-4 ${alertClasses}`}>
@@ -1265,7 +1349,12 @@ export function WorksheetPanel({ taxYearId }: { taxYearId: string }) {
               <p className={mutedTextClasses}>{t('worksheet.empty')}</p>
             </div>
           ) : null}
-          <TaxpayerForm taxYearId={taxYearId} onCalculated={setExcludedDonations} />
+          <TaxpayerForm
+            taxYearId={taxYearId}
+            year={year}
+            prefill={prefill}
+            onCalculated={setExcludedDonations}
+          />
           {calculationQuery.data !== null ? (
             <Worksheet
               result={calculationQuery.data.result}

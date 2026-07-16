@@ -4,6 +4,7 @@ import type {
   CharityReceipt,
   Form106,
   Form867,
+  TaxpayerProfile,
   TaxYearStatusUpdate,
 } from '@taxreturns/shared';
 import type { TaxReturnResult, TaxYearInput } from '@taxreturns/tax-engine';
@@ -132,6 +133,35 @@ export function createTaxYear(year: number): Promise<TaxYear> {
  */
 export function deleteTaxYear(taxYearId: string): Promise<void> {
   return request<void>(`/tax-years/${taxYearId}`, { method: 'DELETE' });
+}
+
+/**
+ * `GET /profile` — the stored taxpayer pre-fill profile. `payload` is typed
+ * `unknown` on purpose: the reader must `TaxpayerProfileSchema.safeParse` it
+ * and treat a mismatch as "no profile" (fail-safe — a stale stored shape must
+ * never block the worksheet).
+ */
+export interface TaxpayerProfileResponse {
+  payload: unknown;
+  updatedAt: string;
+}
+
+export async function getTaxpayerProfile(): Promise<TaxpayerProfileResponse | null> {
+  try {
+    return await request<TaxpayerProfileResponse>('/profile');
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/** `PUT /profile` — upserts the single per-user profile row. */
+export function saveTaxpayerProfile(
+  payload: TaxpayerProfile,
+): Promise<TaxpayerProfileResponse> {
+  return request<TaxpayerProfileResponse>('/profile', jsonInit('PUT', payload));
 }
 
 export function listDocuments(taxYearId: string): Promise<TaxDocument[]> {

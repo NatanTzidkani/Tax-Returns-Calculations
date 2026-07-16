@@ -13,8 +13,10 @@ import {
   calculateTaxYear,
   getCalculation,
   getMe,
+  getTaxpayerProfile,
   listDocuments,
   listTaxYears,
+  saveTaxpayerProfile,
 } from '../api/client';
 import { renderApp } from '../test/render';
 
@@ -29,6 +31,8 @@ vi.mock('../api/client', async (importOriginal) => {
     listDocuments: vi.fn(),
     getCalculation: vi.fn(),
     calculateTaxYear: vi.fn(),
+    getTaxpayerProfile: vi.fn(),
+    saveTaxpayerProfile: vi.fn(),
   };
 });
 
@@ -187,6 +191,9 @@ beforeEach(() => {
   vi.mocked(getMe)
     .mockReset()
     .mockResolvedValue({ id: 'u1', email: 'owner@example.com' });
+  // Default: no stored profile — the pre-existing tests exercise an empty form.
+  vi.mocked(getTaxpayerProfile).mockReset().mockResolvedValue(null);
+  vi.mocked(saveTaxpayerProfile).mockReset();
 });
 
 describe('WorksheetPanel', () => {
@@ -1095,5 +1102,176 @@ describe('WorksheetPanel', () => {
     expect(
       screen.getByText((c) => normalize(c).includes('ניכוי במקור (שדה 043)')),
     ).toBeTruthy();
+  });
+});
+
+describe('WorksheetPanel — taxpayer profile pre-fill & save (plan 2026-07-14)', () => {
+  // The fixture tax year is 2024, so a child born 2020 pre-fills as age "4".
+  const storedProfile = {
+    payload: {
+      gender: 'female' as const,
+      isIsraeliResident: true,
+      children: [{ yearOfBirth: 2020 }],
+      parentContext: { regime: 'marriedRegisteredSpouse' as const },
+      degrees: [
+        { track: 'bachelor' as const, completionYear: 2023, studyYears: 3 },
+      ],
+    },
+    updatedAt: '2026-07-15T10:00:00.000Z',
+  };
+
+  it('pre-fills the form from the stored profile with derived ages and shows the notice', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockResolvedValue(storedProfile);
+    await renderApp('/tax-years/ty-2024');
+
+    const genderSelect = (await screen.findByLabelText('מין')) as HTMLSelectElement;
+    expect(genderSelect.value).toBe('female');
+    const ageSelect = screen.getByLabelText('גיל בשנת המס') as HTMLSelectElement;
+    expect(ageSelect.value).toBe('4');
+    const regimeSelect = screen.getByLabelText(
+      'הקשר הורי (סעיפים 40(ב)/66(ג))',
+    ) as HTMLSelectElement;
+    expect(regimeSelect.value).toBe('marriedRegisteredSpouse');
+    expect(
+      (screen.getByLabelText('שנת סיום הלימודים') as HTMLInputElement).value,
+    ).toBe('2023');
+    // The pre-fill notice tells the reviewer the ages were derived and must
+    // be confirmed.
+    expect(
+      screen.getByText((c) => normalize(c).includes('מולא מראש מהפרופיל השמור')),
+    ).toBeTruthy();
+  });
+
+  it('omits out-of-range children from the pre-fill and says how many', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockResolvedValue({
+      payload: {
+        gender: 'male',
+        isIsraeliResident: true,
+        children: [{ yearOfBirth: 2020 }, { yearOfBirth: 1999 }],
+      },
+      updatedAt: '2026-07-15T10:00:00.000Z',
+    });
+    await renderApp('/tax-years/ty-2024');
+
+    await screen.findByLabelText('גיל בשנת המס');
+    expect(screen.getAllByLabelText('גיל בשנת המס')).toHaveLength(1);
+    expect(
+      screen.getByText((c) => normalize(c).includes('הושמטו')),
+    ).toBeTruthy();
+  });
+
+  it('renders an empty form with no notice when there is no stored profile', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    await renderApp('/tax-years/ty-2024');
+
+    const genderSelect = (await screen.findByLabelText('מין')) as HTMLSelectElement;
+    expect(genderSelect.value).toBe('male');
+    expect(screen.queryAllByLabelText('גיל בשנת המס')).toHaveLength(0);
+    expect(
+      screen.queryByText((c) => normalize(c).includes('מולא מראש מהפרופיל השמור')),
+    ).toBeNull();
+  });
+
+  it('a profile fetch error still renders a usable empty form (never blocks)', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockRejectedValue(new ApiError(500, 'שגיאה'));
+    await renderApp('/tax-years/ty-2024');
+
+    expect(await screen.findByLabelText('מין')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'חישוב' })).toBeTruthy();
+  });
+
+  it('an unparseable stored payload silently skips the pre-fill', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockResolvedValue({
+      payload: { gender: 'other', children: [{ ageInTaxYear: 5 }] },
+      updatedAt: '2026-07-15T10:00:00.000Z',
+    });
+    await renderApp('/tax-years/ty-2024');
+
+    const genderSelect = (await screen.findByLabelText('מין')) as HTMLSelectElement;
+    expect(genderSelect.value).toBe('male');
+    expect(
+      screen.queryByText((c) => normalize(c).includes('מולא מראש מהפרופיל השמור')),
+    ).toBeNull();
+  });
+
+  it('the reviewer edits a pre-filled value and the calculate body carries the EDIT', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockResolvedValue(storedProfile);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.selectOptions(await screen.findByLabelText('גיל בשנת המס'), '5');
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    await waitFor(() =>
+      expect(calculateTaxYear).toHaveBeenCalledWith(
+        'ty-2024',
+        expect.objectContaining({
+          taxpayer: expect.objectContaining({
+            gender: 'female',
+            children: [{ ageInTaxYear: 5 }],
+          }),
+        }),
+      ),
+    );
+  });
+
+  it('save-to-profile appears only after a successful calculate and PUTs derived birth years', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockResolvedValue(storedProfile);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+    vi.mocked(saveTaxpayerProfile).mockResolvedValue({
+      payload: storedProfile.payload,
+      updatedAt: '2026-07-15T11:00:00.000Z',
+    });
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await screen.findByLabelText('מין');
+    // Absent before a calculation succeeds.
+    expect(screen.queryByRole('button', { name: 'שמור לפרופיל' })).toBeNull();
+
+    // Edit the age (4 → 5), calculate, then save: the profile must store
+    // yearOfBirth = 2024 − 5 = 2019 — the EDITED fact, arithmetic inverted.
+    await user.selectOptions(screen.getByLabelText('גיל בשנת המס'), '5');
+    await user.click(screen.getByRole('button', { name: 'חישוב' }));
+
+    const saveButton = await screen.findByRole('button', { name: 'שמור לפרופיל' });
+    await user.click(saveButton);
+
+    await waitFor(() =>
+      expect(saveTaxpayerProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gender: 'female',
+          children: [{ yearOfBirth: 2019 }],
+          parentContext: { regime: 'marriedRegisteredSpouse' },
+        }),
+      ),
+    );
+    expect(
+      await screen.findByText((c) => normalize(c).includes('נשמרו לפרופיל')),
+    ).toBeTruthy();
+  });
+
+  it('a failed save shows the server Hebrew message verbatim', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+    const serverMessage = 'פרופיל הנישום אינו תקין';
+    vi.mocked(saveTaxpayerProfile).mockRejectedValue(new ApiError(400, serverMessage));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+    await user.click(await screen.findByRole('button', { name: 'שמור לפרופיל' }));
+
+    expect(await screen.findByText(serverMessage)).toBeTruthy();
   });
 });
