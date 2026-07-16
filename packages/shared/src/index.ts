@@ -5,3 +5,4 @@ export * from './documents/charity-receipt';
 export * from './documents';
 export * from './auth';
 export * from './calculation';
+export * from './taxpayer-profile';
