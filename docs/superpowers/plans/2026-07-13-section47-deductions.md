@@ -3,11 +3,12 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Do not start coding before the "Owner must verify before merge" checklist is signed off.** _Update 2026-07-13: the rate constants are now primary-source **CONFIRMED** in `2026-07-13-section47-rates-addendum.md` (פקודת מס הכנסה read verbatim). The remaining gates in §5 are the scope call, the surtax/§45א ordering question, and input extractability — no longer the rates._
 
 **Status:** DEFERRED / not scheduled. This plan is written and reviewable. The
-rate constants are now primary-source **CONFIRMED** (see the rates addendum,
-referenced below); it must not be implemented until (a) the owner makes the
-scope call that a real return actually needs a §47 deduction, and (b) the
-residual §5 items (surtax/§45א ordering, input extractability) are settled. See
-§0 "Why deferrable".
+rate constants are primary-source **CONFIRMED** (rates addendum), and the
+surtax/§45א ordering question is **CLOSED 2026-07-16**
+(`2026-07-16-section47-ordering-addendum.md`: surtax post-§47, §45א cap
+pre-§47, plus the §47(ג) anti-double-dip requirement). The **only remaining
+gate is the owner's scope call** — does a §47 / §17(5א) amount actually fire
+for the real return? See §0 "Why deferrable".
 
 **Goal:** Add the §47 pension **deduction** (ניכוי) to the tax engine — the
 relief that reduces *taxable income before the brackets* — as a first-class,
@@ -284,17 +285,28 @@ confirmed value + section into each `// source:` comment.
 
 **Still genuinely open (must be settled before the relevant TDD step):**
 
-- [ ] **Surtax base & §45א cap: pre- or post-§47 income?** (§2.2). The addendum
-      does NOT settle whether `computeSurtax`'s base and `computePensionCredit`'s
-      7%-of-qualifying-income cap use `workIncome` (raw) or `taxableWorkIncome`
-      (post-deduction). Confirm against §121ב and §45א **before Step 7**.
+- [x] ~~**Surtax base & §45א cap: pre- or post-§47 income?**~~ → **CLOSED
+      2026-07-16** (`docs/superpowers/research/2026-07-16-section47-ordering-addendum.md`):
+      surtax base = **post-§47** (§121ב(ה)→§1 "לאחר הניכויים"); the §45א cap's
+      הכנסה מזכה = **pre-§47 explicitly** (§47(א)(1) "לפני הניכוי על פי סעיף
+      זה", adopted by §45א(ג)) — `computePensionCredit` keeps raw income.
+      **New requirement the addendum surfaced:** §47(ג)/(ב2) exclusivity — a
+      shekel deducted under §47 must not also earn the §45א 35% credit (and
+      (ב)-vs-(ב1) sums are mutually exclusive); fold into Steps 7-8 and the
+      מוטב/non-מוטב election comparison (compare total tax incl. the credit
+      each branch leaves available).
 - [ ] **Scope:** does any §47 / self-employed §17(5א) deduction fire for Matan's
       actual return (single employer, fully-insured salary, no עמית-עצמאי fund)?
       For that profile every deduction here is **0** (report §4) — if so, leave
-      deferred rather than build a module that never runs.
-- [ ] **Input extractability:** confirm whether "insured salary" and
-      independent-contribution figures exist on Form 106 / the owner's documents
-      before adding schema fields that can't be populated.
+      deferred rather than build a module that never runs. **This is now the
+      ONLY gate to scheduling.**
+- [ ] **Input extractability:** *half-closed 2026-07-16* (ordering addendum §4):
+      `Form106Schema` is a generic 3-digit-box→agorot map, so **no schema change
+      is needed** — extraction already carries any box present. Owner-side
+      remainder: identify which box code (if any) on the real Form 106 shows
+      הכנסה מבוטחת, and whether independent עמית-עצמאי deposits appear on any
+      document (else they become a reviewer-entered field like
+      `nonLinkedInterest*`).
 - [ ] **Per-year indexed ₪ ceilings** (116,400 / 164,400 / 232,800 / 291,000 /
       293,397) — re-verify each year; they track the average wage / §120ב, not
       the now-confirmed rates.

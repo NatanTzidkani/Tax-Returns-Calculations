@@ -125,7 +125,12 @@ Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §
     DELETE /profile retention, maintenanceShare storage); the browser-level
     E2E pass awaits a stack restart on the host (api container was down;
     contract covered by real-Postgres integration tests). **Next engine
-    step:** §47 deductions (plan written, awaiting owner scope call).
+    step:** §47 deductions — plan written; rates, ceilings AND the
+    surtax/§45א ordering all primary-confirmed (ordering addendum
+    `2026-07-16-section47-ordering-addendum.md`: surtax post-§47, §45א cap
+    pre-§47, §47(ג) anti-double-dip). **Sole remaining gate: the owner scope
+    call** (single-employer fully-insured salary → every §47 amount is 0 →
+    stays deferred).
 
 ## Non-negotiable conventions
 
