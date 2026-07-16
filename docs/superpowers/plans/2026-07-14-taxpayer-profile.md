@@ -1,5 +1,15 @@
 # Stored Taxpayer Profile Plan — persist credit-point facts across tax years (pre-fill only)
 
+> **Status: COMPLETE 2026-07-16** (branch `feat/taxpayer-profile`). All phases
+> executed as written against the post-il-0.7.0 shape (`singleFather`, 6-17
+> ages legal — the pre-fill needs no aged-band caveats). Reviewer pass done,
+> findings fixed (year-resolution race → the panel derives the year from its
+> own tax-years query; pre-fill notice frozen at mount; blank-aliyah save
+> fails loud; failed-calculate save-button absence pinned). Phase D's
+> browser-level E2E deferred to the owner (api container down from this dev
+> container; the contract is covered by the real-Postgres integration suite).
+> The "Owner should decide" section below remains open.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan is a **planning document — no code is written by writing it.**
 
 **This is the "stored taxpayer profile" the credit-points wiring plan deferred**
