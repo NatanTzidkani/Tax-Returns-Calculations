@@ -72,6 +72,10 @@ export interface ChildAllocationRow {
   reason: 'child' | 'maintenanceShare' | 'birthYearDeferral';
   twelfths: number;
   label: string;
+  /** An EXPLANATORY 0 (e.g. the §40(ב)(1א) points-attach-to-the-mother
+   *  proviso) that must survive the caller's no-zero-rows filter and reach
+   *  the worksheet — a plain table 0 (father age 18) stays filtered. */
+  surfaceWhenZero?: true;
 }
 
 export interface FlatAdditionRow {
@@ -298,6 +302,9 @@ export function allocateChildTwelfths(
               label:
                 `${childDescriptor(age)} (§40(ב)(1א) — נקודות הילד נזקפות ` +
                 `כנגד הכנסת האם, לא כנגד הכנסת האב)`,
+              // No black box: this 0 must reach the worksheet so the
+              // reviewer sees WHY (il-0.7.1, reviewer nit).
+              surfaceWhenZero: true,
             },
           ];
         }

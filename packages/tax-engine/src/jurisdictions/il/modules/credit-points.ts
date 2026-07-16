@@ -86,12 +86,13 @@ export function computeCreditPoints(
     assertSeparatedNonEntitledMultiplicity(children.length, parentContext.regime);
     for (const child of children) {
       // The allocation helper owns all regime/age/share/deferral guards and
-      // fails loud (incl. the not-yet-owner-verified 6-17 band and father
-      // Schedule B). Its legitimate 0s (zero-share, father-zeroed) follow
-      // the no-zero-rows convention; the NEGATIVE טופס 116ד deferral row is
-      // real money and must flow through.
+      // fails loud. Its legitimate 0s (zero-share, age-18 father column)
+      // follow the no-zero-rows convention — except rows the helper marks
+      // surfaceWhenZero (the §40(ב)(1א) attach-to-the-mother proviso),
+      // which are explanatory and must reach the worksheet; the NEGATIVE
+      // טופס 116ד deferral row is real money and must flow through.
       for (const row of allocateChildTwelfths(child, parentContext)) {
-        if (row.twelfths !== 0) {
+        if (row.twelfths !== 0 || row.surfaceWhenZero === true) {
           breakdown.push({
             reason: row.reason,
             points: row.twelfths / 12,

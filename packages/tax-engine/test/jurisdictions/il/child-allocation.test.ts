@@ -300,6 +300,19 @@ describe('allocateChildTwelfths — father regimes (§66(ג)(5) / §40(ב)(1א))
     expect(rows[0]).toMatchObject({ reason: 'child', twelfths: 0 });
     expect(rows[0]!.label).toContain('§40(ב)(1א)');
     expect(rows[0]!.label).toContain('האם');
+    // il-0.7.1 (reviewer nit): this 0 is EXPLANATORY — the points exist but
+    // attach to the mother — so it must survive the no-zero-rows filter and
+    // reach the worksheet, unlike a plain table 0.
+    expect(rows[0]!.surfaceWhenZero).toBe(true);
+  });
+
+  it('plain table 0s (father age 18, the singleParent stack at 18) do NOT surface', () => {
+    const father = allocateChildTwelfths({ ageInTaxYear: 18 }, ctx('marriedOtherSpouse'));
+    expect(father[0]!.twelfths).toBe(0);
+    expect(father[0]!.surfaceWhenZero).toBeUndefined();
+    const stack = allocateChildTwelfths({ ageInTaxYear: 18 }, ctx('singleParent'));
+    expect(stack[1]!.twelfths).toBe(0);
+    expect(stack[1]!.surfaceWhenZero).toBeUndefined();
   });
 
   it('the mother-claims-false path still validates the age (fail-loud standalone)', () => {

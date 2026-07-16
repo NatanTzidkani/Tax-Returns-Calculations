@@ -155,8 +155,8 @@ describe('calculate — golden scenarios', () => {
     // Structured children/oleh inputs are stamped as a new rule set
     // (il-0.4.0; the current version also carries the degree and
     // parent-allocation increments).
-    expect(ENGINE_VERSION).toBe('il-0.7.0');
-    expect(res.engineVersion).toBe('il-0.7.0');
+    expect(ENGINE_VERSION).toBe('il-0.7.1');
+    expect(res.engineVersion).toBe('il-0.7.1');
     expect(res.creditPoints.points).toBe(10.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(29_766));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([
@@ -188,8 +188,8 @@ describe('calculate — golden scenarios', () => {
     );
     // Structured degree input is stamped as a new rule set (il-0.5.0; the
     // current version also carries the parent-allocation increment).
-    expect(ENGINE_VERSION).toBe('il-0.7.0');
-    expect(res.engineVersion).toBe('il-0.7.0');
+    expect(ENGINE_VERSION).toBe('il-0.7.1');
+    expect(res.engineVersion).toBe('il-0.7.1');
     expect(res.creditPoints.points).toBe(3.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(9_438));
     expect(res.creditPoints.breakdown).toContainEqual({
@@ -228,8 +228,8 @@ describe('calculate — golden scenarios', () => {
       }),
     );
     // Regime-aware child-point allocation is stamped as a new rule set.
-    expect(ENGINE_VERSION).toBe('il-0.7.0');
-    expect(res.engineVersion).toBe('il-0.7.0');
+    expect(ENGINE_VERSION).toBe('il-0.7.1');
+    expect(res.engineVersion).toBe('il-0.7.1');
     expect(res.creditPoints.points).toBe(8.75);
     expect(res.creditPoints.valueAgorot).toBe(sh(25_410));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([

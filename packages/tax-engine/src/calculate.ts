@@ -40,8 +40,11 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * addendum — 6-17 child band (2 custodial / 1 other), father Schedule B all
  * ages (§66(ג)(5)/§40(ב)(1א); singleFatherOfToddler renamed singleFather),
  * הורה-יחיד stacks the (1א) column per §40(ב)(1ב), קצבה settled as verified
- * statutory 0 (NII-paid). §40(ב)(2) multi-child fraction stays gated. */
-export const ENGINE_VERSION = 'il-0.7.0';
+ * statutory 0 (NII-paid). §40(ב)(2) multi-child fraction stays gated.
+ * 0.7.1: the §40(ב)(1א) attach-to-the-mother proviso row now SURFACES in the
+ * breakdown at 0 points (surfaceWhenZero — no-black-box reviewer nit); same
+ * totals for every input. */
+export const ENGINE_VERSION = 'il-0.7.1';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */

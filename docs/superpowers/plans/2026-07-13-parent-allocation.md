@@ -411,12 +411,14 @@ item fails loud or routes to `additionalCreditPoints` rather than guessing.**
       including `singleParent`/`separatedNonEntitled` where they are
       statutorily incoherent; currently 0-point placeholder / label-only, so
       no number is wrong, but tighten when the קצבה count goes live.
-- [ ] **§40(ב)(1א) explanatory 0-row not surfaced (recorded 2026-07-14,
-      reviewer nit).** The mother-claims-false father case returns its
+- [x] **§40(ב)(1א) explanatory 0-row not surfaced (recorded 2026-07-14,
+      reviewer nit).** ~~The mother-claims-false father case returns its
       explanatory 0-row, but the module's no-zero-rows filter drops it, so
-      the worksheet shows nothing for that child (the number is right; the
-      "no black box" label never reaches the user). Needs a row-model flag
-      (like the קצבה placeholder's deliberate push) in a future increment.
+      the worksheet shows nothing for that child.~~ **CLOSED 2026-07-16
+      (il-0.7.1):** `ChildAllocationRow.surfaceWhenZero` marks explanatory
+      0s; the credit-points module passes them through, so the
+      attach-to-the-mother label now reaches the worksheet. Plain table 0s
+      (father age 18) stay filtered.
 - [ ] **Same-sex / registered-parent mapping.** The engine keys allocation on the
       declared *role* (בן-זוג-רשום vs other spouse), not literal gender, per the
       Tax Authority position (rmim-goldpro, secondary). Confirm this framing is

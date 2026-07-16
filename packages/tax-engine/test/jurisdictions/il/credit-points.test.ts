@@ -293,6 +293,26 @@ describe('computeCreditPoints', () => {
     expect(allowanceRow?.label).toContain('§66(ג)(3)');
   });
 
+  it('the §40(ב)(1א) mother-claims-false 0-row SURFACES in the breakdown (il-0.7.1)', () => {
+    // Reviewer nit closed: the number was always right (0) but the
+    // no-black-box label never reached the worksheet — the reviewer saw
+    // nothing for the child instead of WHY the father gets no points.
+    const res = computeCreditPoints(
+      {
+        isIsraeliResident: true,
+        gender: 'male',
+        parentContext: { regime: 'singleFather', motherClaimsUnderSection1: false },
+        children: [{ ageInTaxYear: 1 }],
+      },
+      y2025,
+    );
+    expect(res.points).toBe(2.25); // resident only — the child row is 0
+    const childRow = res.breakdown.find((r) => r.reason === 'child');
+    expect(childRow?.points).toBe(0);
+    expect(childRow?.label).toContain('§40(ב)(1א)');
+    expect(childRow?.label).toContain('האם');
+  });
+
   it('separateCalculation changes the labels, never the count', () => {
     const base = computeCreditPoints(
       {
