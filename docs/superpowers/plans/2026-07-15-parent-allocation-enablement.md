@@ -147,3 +147,9 @@ deserve the owner's eye before filing a real return on il-0.7.0:
       ITA instruction's own tables cover only 6–17 — confirm the 0–5 stacking
       reading matches practice (the worksheet row's explicit §40(ב)(1ב) label
       makes any correction a one-line table fix).
+      **Corroborated 2026-07-16 (secondary):** kolzchut's dedicated הורה-אחד
+      page states the 0–5 stack explicitly — a 2-year-old yields "9 נקודות
+      (4.5 נקודות שמיועדות לאב ו-4.5 נקודות שמיועדות לאם)" plus the flat
+      extra point, table valid 2024+ — exactly this plan's numbers (URL in
+      `research/SOURCES.md`, ad-hoc rows). Residual owner-eye is now only
+      the usual secondary-vs-practice caveat.
