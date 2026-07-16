@@ -1140,6 +1140,7 @@ describe('cross-user isolation', () => {
         payload: taxpayerBody,
       },
       { method: 'GET', url: `/tax-years/${intruderYearId}/calculation` },
+      { method: 'GET', url: `/tax-years/${intruderYearId}/confirmed-data` },
       {
         method: 'PATCH',
         url: `/tax-years/${intruderYearId}/status`,
