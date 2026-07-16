@@ -136,6 +136,23 @@ export function deleteTaxYear(taxYearId: string): Promise<void> {
 }
 
 /**
+ * `GET /tax-years/:id/confirmed-data` — the data panel's projection: the
+ * confirmed document values mapped by the SAME server-side mapper the
+ * calculate route uses (box codes, §46 exclusion), so the panel shows
+ * exactly what the next calculation will consume.
+ */
+export interface ConfirmedDataSummary {
+  salaries: TaxYearInput['salaries'];
+  donations: TaxYearInput['donations'];
+  excludedDonations: number;
+  capital: TaxYearInput['capital'];
+}
+
+export function getConfirmedData(taxYearId: string): Promise<ConfirmedDataSummary> {
+  return request<ConfirmedDataSummary>(`/tax-years/${taxYearId}/confirmed-data`);
+}
+
+/**
  * `GET /profile` — the stored taxpayer pre-fill profile. `payload` is typed
  * `unknown` on purpose: the reader must `TaxpayerProfileSchema.safeParse` it
  * and treat a mismatch as "no profile" (fail-safe — a stale stored shape must

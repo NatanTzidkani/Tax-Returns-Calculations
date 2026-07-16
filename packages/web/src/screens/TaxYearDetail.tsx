@@ -9,6 +9,7 @@ import {
   listTaxYears,
   uploadDocument,
 } from '../api/client';
+import { DataPanel } from '../components/DataPanel';
 import { DeleteTaxYearDialog } from '../components/DeleteTaxYearDialog';
 import { ExtractionStatusChip } from '../components/StatusChip';
 import { WorksheetPanel } from '../components/WorksheetPanel';
@@ -181,25 +182,6 @@ function DocumentsPanel({ taxYearId }: { taxYearId: string }) {
   );
 }
 
-function PlaceholderPanel({
-  titleKey,
-  bodyKey,
-  id,
-}: {
-  titleKey: string;
-  bodyKey: string;
-  id: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <section aria-labelledby={id} className={panelClasses}>
-      <h2 id={id} className={panelHeadingClasses}>
-        {t(titleKey)}
-      </h2>
-      <p className={`mt-3 ${mutedTextClasses}`}>{t(bodyKey)}</p>
-    </section>
-  );
-}
 
 export function TaxYearDetail() {
   const { t } = useTranslation();
@@ -245,11 +227,7 @@ export function TaxYearDetail() {
       </p>
       <div className="mt-6 flex flex-col gap-4">
         <DocumentsPanel taxYearId={taxYearId} />
-        <PlaceholderPanel
-          id="data-panel-title"
-          titleKey="taxYearDetail.dataPanel"
-          bodyKey="taxYearDetail.dataPlaceholder"
-        />
+        <DataPanel taxYearId={taxYearId} />
         <WorksheetPanel taxYearId={taxYearId} year={taxYear?.year} />
       </div>
     </main>

@@ -44,6 +44,24 @@ export const resources = {
         addYearSubmit: 'הוספה',
         addYearError: 'הוספת שנת המס נכשלה',
       },
+      dataPanel: {
+        // Confirmed values grouped per spec §6 screen 2; official box codes
+        // as labels (Form 106: 158/042/045; securities withholding: 040).
+        note: 'הנתונים המאושרים כפי שייכנסו לחישוב הבא.',
+        salariesTitle: 'שכר (טופס 106)',
+        gross: 'שכר/הכנסה ברוטו (תיבה 158)',
+        withheld: 'מס הכנסה שנוכה (תיבה 042)',
+        pension: 'תגמולי עובד לקופת גמל (תיבה 045)',
+        donationsTitle: 'תרומות (סעיף 46)',
+        excludedDonationsNote:
+          'קבלות ללא אישור לפי סעיף 46 (לא ייכללו בחישוב): {{n}}',
+        capitalTitle: 'שוק ההון (טופס 867)',
+        realGains: 'רווחים ריאליים',
+        realLosses: 'הפסדים ריאליים',
+        interestDividend: 'ריבית ודיבידנד',
+        capitalWithheld: 'מס שנוכה במקור (תיבה 040)',
+        carryIn: 'הפסד הון מועבר משנים קודמות',
+      },
       taxYearDetail: {
         title: 'שנת מס {{year}}',
         titleUnknown: 'שנת מס',
