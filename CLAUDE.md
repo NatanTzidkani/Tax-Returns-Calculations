@@ -125,12 +125,13 @@ Each phase gets a written plan in `docs/superpowers/plans/` before code (spec §
     DELETE /profile retention, maintenanceShare storage); the browser-level
     E2E pass awaits a stack restart on the host (api container was down;
     contract covered by real-Postgres integration tests). **Next engine
-    step:** §47 deductions — plan written; rates, ceilings AND the
-    surtax/§45א ordering all primary-confirmed (ordering addendum
+    step:** none scheduled — §47 deductions are **deferred by owner scope
+    call (2026-07-16)**: no qualifying income on the actual return (single
+    employer, fully-insured, no independent fund), so every §47/§17(5א)
+    amount is 0. The plan is fully build-ready if the income profile ever
+    changes (rates, ceilings AND ordering all primary-confirmed — see
     `2026-07-16-section47-ordering-addendum.md`: surtax post-§47, §45א cap
-    pre-§47, §47(ג) anti-double-dip). **Sole remaining gate: the owner scope
-    call** (single-employer fully-insured salary → every §47 amount is 0 →
-    stays deferred).
+    pre-§47, §47(ג) anti-double-dip).
 
 ## Non-negotiable conventions
 

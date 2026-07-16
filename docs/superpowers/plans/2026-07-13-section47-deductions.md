@@ -295,11 +295,13 @@ confirmed value + section into each `// source:` comment.
       (ב)-vs-(ב1) sums are mutually exclusive); fold into Steps 7-8 and the
       מוטב/non-מוטב election comparison (compare total tax incl. the credit
       each branch leaves available).
-- [ ] **Scope:** does any §47 / self-employed §17(5א) deduction fire for Matan's
-      actual return (single employer, fully-insured salary, no עמית-עצמאי fund)?
-      For that profile every deduction here is **0** (report §4) — if so, leave
-      deferred rather than build a module that never runs. **This is now the
-      ONLY gate to scheduling.**
+- [x] **Scope:** ~~does any §47 / self-employed §17(5א) deduction fire for
+      Matan's actual return?~~ → **ANSWERED by the owner 2026-07-16: no** —
+      single employer, fully-insured salary, no עמית-עצמאי fund, no business
+      income; every §47/§17(5א) amount is 0 for the current return. **The plan
+      stays DEFERRED by owner decision** — revisit only if the income profile
+      changes (self-employment, uninsured salary, independent deposits, or a
+      self-employed keren-hishtalmut).
 - [ ] **Input extractability:** *half-closed 2026-07-16* (ordering addendum §4):
       `Form106Schema` is a generic 3-digit-box→agorot map, so **no schema change
       is needed** — extraction already carries any box present. Owner-side
