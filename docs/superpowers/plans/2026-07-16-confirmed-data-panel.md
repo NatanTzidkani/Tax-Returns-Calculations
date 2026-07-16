@@ -1,6 +1,7 @@
 # Confirmed-data panel — the last unbuilt phase-1 screen element
 
-**Date:** 2026-07-16 · **Status:** in progress
+**Date:** 2026-07-16 · **Status:** COMPLETE 2026-07-16 (all three TDD steps
+as written; `PlaceholderPanel` deleted with its last consumer)
 **Spec anchor:** design spec §6 screen 2 — "Tax year detail — … **data panel
 (confirmed values grouped: שכר, תרומות, שוק ההון, פנסיה)** …". Shipped since
 Plan 4 as `PlaceholderPanel` (`taxYearDetail.dataPlaceholder`). This plan
