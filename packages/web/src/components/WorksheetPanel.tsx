@@ -18,6 +18,7 @@ import {
   calculateTaxYear,
   getCalculation,
   getTaxpayerProfile,
+  listTaxYears,
   saveTaxpayerProfile,
 } from '../api/client';
 import {
@@ -235,7 +236,11 @@ function TaxpayerForm({
   // Pre-fill happens via useState INITIALIZERS (mount-time only): the stored
   // profile is a suggestion the reviewer edits — nothing may later clobber
   // those edits (plan: docs/superpowers/plans/2026-07-14-taxpayer-profile.md).
-  const init = prefill?.state;
+  // The prefill is also FROZEN at mount for the notice: after a save the
+  // profile query refetches and the live prop turns non-null, but the notice
+  // must not retroactively claim a form the reviewer typed was pre-filled.
+  const [mountPrefill] = useState(prefill);
+  const init = mountPrefill?.state;
   const [gender, setGender] = useState<'male' | 'female'>(init?.gender ?? 'male');
   const [additionalPoints, setAdditionalPoints] = useState('');
   const [interest, setInterest] = useState('');
@@ -444,12 +449,12 @@ function TaxpayerForm({
     // number-input constraints (step/min) would otherwise block submit for a
     // step-invalid entry before our localized Hebrew message could show.
     <form onSubmit={onSubmit} noValidate className="mt-4 flex flex-col gap-3">
-      {prefill !== null ? (
+      {mountPrefill !== null ? (
         <p className={amberNoticeClasses}>
           {t('worksheet.prefillNotice')}
-          {prefill.omittedChildren > 0
+          {mountPrefill.omittedChildren > 0
             ? ` ${t('worksheet.prefillOmittedChildren', {
-                count: prefill.omittedChildren,
+                count: mountPrefill.omittedChildren,
               })}`
             : ''}
         </p>
@@ -1321,22 +1326,34 @@ export function WorksheetPanel({
     queryFn: getTaxpayerProfile,
     retry: false,
   });
+  // Same key as the parent screen's list query (deduped). The year is
+  // re-derived HERE from the query data — not only taken from the prop — so
+  // the "list settled" signal and the year value change in the same render
+  // (the prop arrives a parent re-render later, and racing it would mount
+  // the form before the pre-fill has its year). It also tells "still
+  // loading" (hold the form) apart from "settled but unresolvable" (deleted
+  // year / failed list → render the form WITHOUT pre-fill rather than
+  // spinning forever; reviewer finding, 2026-07-16).
+  const taxYearsQuery = useQuery({ queryKey: ['tax-years'], queryFn: listTaxYears });
+  const effectiveYear =
+    year ?? taxYearsQuery.data?.find((candidate) => candidate.id === taxYearId)?.year;
+  const yearPending = effectiveYear === undefined && taxYearsQuery.isPending;
   const prefill = useMemo<TaxpayerFormPrefill | null>(() => {
-    if (year === undefined || !profileQuery.data) return null;
+    if (effectiveYear === undefined || !profileQuery.data) return null;
     const parsed = TaxpayerProfileSchema.safeParse(profileQuery.data.payload);
     if (!parsed.success) return null;
-    return profileToTaxpayerFormState(parsed.data, year);
-  }, [profileQuery.data, year]);
+    return profileToTaxpayerFormState(parsed.data, effectiveYear);
+  }, [profileQuery.data, effectiveYear]);
 
   return (
     <section aria-labelledby="calculation-panel-title" className={panelClasses}>
       <h2 id="calculation-panel-title" className={panelHeadingClasses}>
         {t('taxYearDetail.calculationPanel')}
       </h2>
-      {calculationQuery.isPending || profileQuery.isPending || year === undefined ? (
-        // year comes from the parent's tax-years query (the page's core
-        // data); mounting the form before it resolves would remount-and-wipe
-        // reviewer edits when it arrives (pre-fill runs in initializers).
+      {calculationQuery.isPending || profileQuery.isPending || yearPending ? (
+        // Mounting the form before the year resolves would remount-and-wipe
+        // reviewer edits when it arrives (pre-fill runs in initializers) —
+        // but only hold while the list is genuinely still loading.
         <p className={`mt-4 ${mutedTextClasses}`}>{t('common.loading')}</p>
       ) : calculationQuery.isError ? (
         <div role="alert" className={`mt-4 ${alertClasses}`}>
@@ -1351,7 +1368,7 @@ export function WorksheetPanel({
           ) : null}
           <TaxpayerForm
             taxYearId={taxYearId}
-            year={year}
+            year={effectiveYear}
             prefill={prefill}
             onCalculated={setExcludedDonations}
           />

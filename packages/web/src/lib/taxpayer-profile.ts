@@ -159,10 +159,15 @@ export function formStateToProfile(
           },
         }
       : {}),
-    ...(state.aliyahOn && state.aliyahYear.trim() !== ''
+    // A toggled-on aliyah section is included even with a blank year: the
+    // NaN fails the shared schema at PUT time (loud Hebrew 400, mirroring
+    // the calculate path) instead of silently erasing a stored aliyah fact
+    // on the next save (reviewer finding, 2026-07-16).
+    ...(state.aliyahOn
       ? {
           aliyah: {
-            aliyahYear: Number(state.aliyahYear),
+            aliyahYear:
+              state.aliyahYear.trim() === '' ? Number.NaN : Number(state.aliyahYear),
             aliyahMonth: Number(state.aliyahMonth),
             scheduleVariant: state.aliyahVariant,
           },

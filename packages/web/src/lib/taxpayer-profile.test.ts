@@ -183,6 +183,15 @@ describe('formStateToProfile', () => {
     expect(otherRegime.children).toEqual([{ yearOfBirth: 2017 }]);
   });
 
+  it('a toggled-on aliyah with a blank year produces a schema-REJECTED profile (loud, never a silent drop)', () => {
+    const profile = formStateToProfile(
+      { ...emptyState, aliyahOn: true, aliyahYear: '' },
+      2025,
+    );
+    expect('aliyah' in profile).toBe(true);
+    expect(TaxpayerProfileSchema.safeParse(profile).success).toBe(false);
+  });
+
   it('omits empty sections as keys (undefined, never [])', () => {
     const profile = formStateToProfile(emptyState, 2025);
     expect('children' in profile).toBe(false);

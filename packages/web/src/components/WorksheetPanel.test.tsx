@@ -1260,6 +1260,59 @@ describe('WorksheetPanel — taxpayer profile pre-fill & save (plan 2026-07-14)'
     ).toBeTruthy();
   });
 
+  it('an unresolvable tax year (settled list, no match) still renders the form, un-pre-filled', async () => {
+    // Reviewer finding: a bookmarked URL for a deleted year must not leave
+    // the panel spinning forever — the form renders without pre-fill.
+    vi.mocked(listTaxYears).mockResolvedValue([]);
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile).mockResolvedValue(storedProfile);
+    await renderApp('/tax-years/ty-2024');
+
+    const genderSelect = (await screen.findByLabelText('מין')) as HTMLSelectElement;
+    expect(genderSelect.value).toBe('male');
+    expect(
+      screen.queryByText((c) => normalize(c).includes('מולא מראש מהפרופיל השמור')),
+    ).toBeNull();
+  });
+
+  it('saving a hand-typed form does not retroactively show the pre-fill notice', async () => {
+    // Reviewer finding: the save invalidates the profile query; the refetched
+    // just-saved profile must not make the notice claim the reviewer's own
+    // typing was "pre-filled from the stored profile".
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(getTaxpayerProfile)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(storedProfile);
+    vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
+    vi.mocked(saveTaxpayerProfile).mockResolvedValue({
+      payload: storedProfile.payload,
+      updatedAt: '2026-07-15T11:00:00.000Z',
+    });
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+    await user.click(await screen.findByRole('button', { name: 'שמור לפרופיל' }));
+    await screen.findByText((c) => normalize(c).includes('נשמרו לפרופיל'));
+
+    expect(
+      screen.queryByText((c) => normalize(c).includes('מולא מראש מהפרופיל השמור')),
+    ).toBeNull();
+  });
+
+  it('the save button stays absent after a FAILED calculate', async () => {
+    vi.mocked(getCalculation).mockResolvedValue(null);
+    vi.mocked(calculateTaxYear).mockRejectedValue(new ApiError(400, 'שגיאה בחישוב'));
+
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    await user.click(await screen.findByRole('button', { name: 'חישוב' }));
+    await screen.findByText('שגיאה בחישוב');
+    expect(screen.queryByRole('button', { name: 'שמור לפרופיל' })).toBeNull();
+  });
+
   it('a failed save shows the server Hebrew message verbatim', async () => {
     vi.mocked(getCalculation).mockResolvedValue(null);
     vi.mocked(calculateTaxYear).mockResolvedValue(makeResponse());
