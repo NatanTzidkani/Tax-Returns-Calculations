@@ -99,17 +99,12 @@ export async function calculationRoutes(
     return [...latest.values()];
   }
 
-  app.post('/tax-years/:id/calculate', async (req, reply) => {
-    const taxYear = await loadTaxYear((req.params as { id: string }).id, req);
-    if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
-
-    const parsed = CalculateRequestSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: MSG.invalidCalculateBody });
-    }
-
-    // Carry-forward IN: open loss rows from earlier years of this user
-    // (phase-1 semantics — consumedByYear stays unused, see the plan).
+  /** Carry-forward IN: open capital-loss rows from earlier years of this
+   *  user (phase-1 semantics — consumedByYear stays unused, see the plan). */
+  async function openLossCarryforwardInAgorot(taxYear: {
+    userId: string;
+    year: number;
+  }): Promise<number> {
     const openLosses = await deps.db
       .select()
       .from(lossCarryforward)
@@ -121,10 +116,19 @@ export async function calculationRoutes(
           isNull(lossCarryforward.consumedByYear),
         ),
       );
-    const lossCarryforwardInAgorot = openLosses.reduce(
-      (sum, row) => sum + row.amountAgorot,
-      0,
-    );
+    return openLosses.reduce((sum, row) => sum + row.amountAgorot, 0);
+  }
+
+  app.post('/tax-years/:id/calculate', async (req, reply) => {
+    const taxYear = await loadTaxYear((req.params as { id: string }).id, req);
+    if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
+
+    const parsed = CalculateRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: MSG.invalidCalculateBody });
+    }
+
+    const lossCarryforwardInAgorot = await openLossCarryforwardInAgorot(taxYear);
 
     const confirmed = await latestConfirmedByDocument(taxYear.id);
     const { input, excludedDonations } = mapConfirmedData({
@@ -200,6 +204,33 @@ export async function calculationRoutes(
     });
 
     return reply.send({ ...row, metadata: { excludedDonations } });
+  });
+
+  /**
+   * The data panel's projection (plan 2026-07-16-confirmed-data-panel.md):
+   * the SAME mapConfirmedData the calculate route uses — so the panel shows
+   * exactly what the next calculation will consume — returning ONLY the
+   * document-derived fields. The stub taxpayer exists solely to satisfy the
+   * mapper's signature and never leaves this handler.
+   */
+  app.get('/tax-years/:id/confirmed-data', async (req, reply) => {
+    const taxYear = await loadTaxYear((req.params as { id: string }).id, req);
+    if (!taxYear) return reply.code(404).send({ message: MSG.taxYearNotFound });
+
+    const lossCarryforwardInAgorot = await openLossCarryforwardInAgorot(taxYear);
+    const confirmed = await latestConfirmedByDocument(taxYear.id);
+    const { input, excludedDonations } = mapConfirmedData({
+      year: taxYear.year,
+      taxpayer: { gender: 'male', isIsraeliResident: true, additionalCreditPoints: 0 },
+      documents: confirmed,
+      lossCarryforwardInAgorot,
+    });
+    return {
+      salaries: input.salaries,
+      donations: input.donations,
+      excludedDonations,
+      capital: input.capital,
+    };
   });
 
   app.get('/tax-years/:id/calculation', async (req, reply) => {
