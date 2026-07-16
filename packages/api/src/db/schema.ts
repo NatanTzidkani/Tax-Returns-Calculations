@@ -89,6 +89,20 @@ export const calculations = pgTable('calculations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const taxpayerProfiles = pgTable('taxpayer_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Unique: exactly one profile per user (phase 1 = the owner). The key is
+  // what makes PUT an idempotent upsert (onConflictDoUpdate on user_id,
+  // mirroring the loss_carryforward concurrency pattern).
+  userId: uuid('user_id').notNull().references(() => users.id).unique(),
+  /** TaxpayerProfileSchema-validated jsonb (validated on WRITE; readers
+   *  safeParse and treat a mismatch as "no profile" — fail-safe). The
+   *  profile is a pre-fill convenience store ONLY: the calculate route
+   *  never reads it (docs/superpowers/plans/2026-07-14-taxpayer-profile.md). */
+  payload: jsonb('payload').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const lossCarryforward = pgTable(
   'loss_carryforward',
   {

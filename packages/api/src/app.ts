@@ -12,6 +12,7 @@ import type * as schema from './db/schema';
 import type { ExtractionClient } from './extraction/extractor';
 import { authRoutes } from './routes/auth';
 import { calculationRoutes } from './routes/calculations';
+import { profileRoutes } from './routes/profile';
 import { documentRoutes } from './routes/documents';
 import { taxYearRoutes } from './routes/tax-years';
 import type { Storage } from './storage/index';
@@ -138,6 +139,7 @@ export function buildApp(deps: AppDeps = {}): FastifyInstance {
   app.register(taxYearRoutes, { deps: resolved });
   app.register(documentRoutes, { deps: resolved });
   app.register(calculationRoutes, { deps: resolved });
+  app.register(profileRoutes, { deps: resolved });
 
   return app;
 }
