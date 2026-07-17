@@ -1,6 +1,8 @@
 # Engine 2026 year data — il-0.8.0
 
-**Date:** 2026-07-17 · **Status:** planned
+**Date:** 2026-07-17 · **Status:** COMPLETE 2026-07-17 (all TDD steps as
+written; awaiting the owner's constants-verification pass and merge review
+on branch `feat/engine-2026-year-data`)
 **Research anchor:** `docs/superpowers/research/2026-07-17-il-2026-year-data.md`
 — every constant an `IlYearData` file needs, all **verified-primary**
 (booklet-2026 April-edition, btl 1522/בל-651 2026 circulars, consolidated
@@ -55,7 +57,7 @@ line in the version comment block.
 
 ## TDD steps
 
-- [ ] **Red — year data:** rework `test/jurisdictions/il/year-data.test.ts`:
+- [x] **Red — year data:** rework `test/jurisdictions/il/year-data.test.ts`:
       `SUPPORTED_IL_YEARS` = `[2024, 2025, 2026]` (unsupported-year probe
       moves 2026 → 2030); bracket-table expectation parametrized per year
       (2024/2025 table vs the widened 2026 table); frozen constants loop runs
@@ -63,7 +65,7 @@ line in the version comment block.
       25%, §125ג 15%); capital add-on `year >= 2025 ? 200 : 0` (2026 = 200);
       NI block: 2026 keeps the 2025 employee rates but reduced band 770,300
       and ceiling 5,191,000 agorot/mo.
-- [ ] **Red — modules:** `income-tax.test.ts` 2026 cases against the official
+- [x] **Red — modules:** `income-tax.test.ts` 2026 cases against the official
       table, incl. divergence cases landing in the widened bands (200,000 ₪ →
       29,392 ₪ in 3 rows; 250,000 ₪ → 41,812 ₪ vs 45,574 ₪ in 2025; boundary
       301,200 ₪ → 57,684 ₪; 800,000 ₪ → 261,030.40 ₪ vs 266,069.20 ₪ — the
@@ -74,11 +76,11 @@ line in the version comment block.
       vs 2026 shows the 3,762 ₪ saving) + high-earner 2026 surtax scenario
       proving the 2% capital add-on persists (same figures as the 2025 golden:
       basic 2,353.20 ₪, capital add-on 1,568.80 ₪, total 3,922 ₪).
-- [ ] **Green:** write `years/2026.ts` (every constant carries its
+- [x] **Green:** write `years/2026.ts` (every constant carries its
       official-source citation adapted from the research report), register in
       `il/index.ts`, bump `ENGINE_VERSION` to `il-0.8.0` + changelog line,
       update the `il-0.7.1` assertions in `calculate.test.ts`.
-- [ ] **Gates:** `pnpm --filter @taxreturns/tax-engine test:coverage` ≥95%
+- [x] **Gates:** `pnpm --filter @taxreturns/tax-engine test:coverage` ≥95%
       branches; root `pnpm typecheck` + root `pnpm test` green. Commit
       `feat(tax-engine): il-0.8.0 — 2026 year data`.
 
