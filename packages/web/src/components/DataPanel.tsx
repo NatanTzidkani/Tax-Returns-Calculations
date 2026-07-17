@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { type Agorot, agorot, formatILS } from '@taxreturns/shared';
+import { agorot, formatILS } from '@taxreturns/shared';
 import { useTranslation } from 'react-i18next';
 import { getConfirmedData } from '../api/client';
 
@@ -36,7 +36,7 @@ function MoneyRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-baseline justify-between gap-4 py-0.5">
       <span className={mutedTextClasses}>{label}</span>
       <span className="text-sm tabular-nums text-neutral-900 dark:text-neutral-100">
-        {formatILS(agorot(value) as Agorot)}
+        {formatILS(agorot(value))}
       </span>
     </div>
   );
