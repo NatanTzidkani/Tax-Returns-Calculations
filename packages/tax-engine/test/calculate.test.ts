@@ -136,6 +136,50 @@ describe('calculate — golden scenarios', () => {
     expect(res.surtax.capitalAdditionalSurtaxAgorot).toBe(0);
   });
 
+  it('golden 2026: 250,000 ₪ salary lands in the widened bracket 3 — 3,762 ₪ less tax than 2025 (il-0.8.0)', () => {
+    // חוק ההתייעלות הכלכלית תשפ"ו-2026 widened brackets 3-4 retroactive to
+    // 1.1.2026: 2026 income tax 41,812 ₪ vs 45,574 ₪ under the 2025 table.
+    const input = { salaries: [salary(250_000, 50_000)] };
+    const res2026 = calculate(baseInput({ year: 2026, ...input }));
+    const res2025 = calculate(baseInput({ year: 2025, ...input }));
+
+    expect(res2026.incomeTax.totalAgorot).toBe(sh(41_812));
+    expect(res2025.incomeTax.totalAgorot).toBe(sh(45_574));
+    // Male resident 2.25 points × 2,904 ₪ (frozen) in both years.
+    expect(res2026.creditPoints.valueAgorot).toBe(sh(6_534));
+    expect(res2026.incomeTaxAfterCreditsAgorot).toBe(sh(35_278));
+    expect(res2026.refundAgorot).toBe(sh(14_722));
+    expect(res2025.refundAgorot).toBe(sh(10_960));
+  });
+
+  it('golden 2026: the 2% capital surtax add-on persists (§121ב(א1) permanent)', () => {
+    // Same input as the 2025 high-earner golden: threshold (721,560 ₪), 3%
+    // rate and the 2% capital add-on are all unchanged in 2026.
+    const res = calculate(
+      baseInput({
+        year: 2026,
+        salaries: [salary(700_000, 250_000)],
+        capital: {
+          entries: [
+            {
+              brokerName: 'ברוקר',
+              realGainAgorot: sh(100_000),
+              realLossAgorot: sh(0),
+              interestDividendAgorot: sh(0),
+              taxWithheldAgorot: sh(25_000),
+            },
+          ],
+          lossCarryforwardInAgorot: sh(0),
+        },
+      }),
+    );
+    expect(res.surtax.baseAgorot).toBe(sh(78_440));
+    expect(res.surtax.basicSurtaxAgorot).toBe(sh(2_353.2));
+    expect(res.surtax.capitalBaseAgorot).toBe(sh(78_440));
+    expect(res.surtax.capitalAdditionalSurtaxAgorot).toBe(sh(1_568.8));
+    expect(res.surtax.totalAgorot).toBe(sh(3_922));
+  });
+
   it('golden 2025: salary + two children (2, 4) + oleh first year (il-0.4.0)', () => {
     // Credit points in twelfths: resident 27 + child age 2 → 54 + child age 4
     // → 30 (report §1.1) + from2022 oleh full first year 1/12×12 = 12 (report
@@ -155,8 +199,8 @@ describe('calculate — golden scenarios', () => {
     // Structured children/oleh inputs are stamped as a new rule set
     // (il-0.4.0; the current version also carries the degree and
     // parent-allocation increments).
-    expect(ENGINE_VERSION).toBe('il-0.7.1');
-    expect(res.engineVersion).toBe('il-0.7.1');
+    expect(ENGINE_VERSION).toBe('il-0.8.0');
+    expect(res.engineVersion).toBe('il-0.8.0');
     expect(res.creditPoints.points).toBe(10.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(29_766));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([
@@ -188,8 +232,8 @@ describe('calculate — golden scenarios', () => {
     );
     // Structured degree input is stamped as a new rule set (il-0.5.0; the
     // current version also carries the parent-allocation increment).
-    expect(ENGINE_VERSION).toBe('il-0.7.1');
-    expect(res.engineVersion).toBe('il-0.7.1');
+    expect(ENGINE_VERSION).toBe('il-0.8.0');
+    expect(res.engineVersion).toBe('il-0.8.0');
     expect(res.creditPoints.points).toBe(3.25);
     expect(res.creditPoints.valueAgorot).toBe(sh(9_438));
     expect(res.creditPoints.breakdown).toContainEqual({
@@ -228,8 +272,8 @@ describe('calculate — golden scenarios', () => {
       }),
     );
     // Regime-aware child-point allocation is stamped as a new rule set.
-    expect(ENGINE_VERSION).toBe('il-0.7.1');
-    expect(res.engineVersion).toBe('il-0.7.1');
+    expect(ENGINE_VERSION).toBe('il-0.8.0');
+    expect(res.engineVersion).toBe('il-0.8.0');
     expect(res.creditPoints.points).toBe(8.75);
     expect(res.creditPoints.valueAgorot).toBe(sh(25_410));
     expect(res.creditPoints.breakdown.map((r) => r.reason)).toEqual([

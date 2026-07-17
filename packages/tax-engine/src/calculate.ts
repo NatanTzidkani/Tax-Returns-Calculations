@@ -43,8 +43,16 @@ import { computeSurtax } from './jurisdictions/il/modules/surtax';
  * statutory 0 (NII-paid). §40(ב)(2) multi-child fraction stays gated.
  * 0.7.1: the §40(ב)(1א) attach-to-the-mother proviso row now SURFACES in the
  * breakdown at 0 points (surfaceWhenZero — no-black-box reviewer nit); same
- * totals for every input. */
-export const ENGINE_VERSION = 'il-0.7.1';
+ * totals for every input.
+ * 0.8.0: IL 2026 year data (years/2026.ts) — brackets 3-4 widened by חוק
+ * ההתייעלות הכלכלית תשפ"ו-2026 retroactive to 1.1.2026 (20% → 228,000 ₪,
+ * 31% → 301,200 ₪); NI reduced band 7,703 ₪/mo (new statutory CPI-indexed
+ * definition, no longer 60% × average wage) + ceiling 51,910 ₪/mo; all other
+ * constants carried over (frozen or fixed statutory), incl. the permanent
+ * §121ב(א1) 2% capital surtax add-on. Constants verified-primary in
+ * docs/superpowers/research/2026-07-17-il-2026-year-data.md; owner
+ * verification pass pending. */
+export const ENGINE_VERSION = 'il-0.8.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
