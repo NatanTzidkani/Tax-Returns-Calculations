@@ -46,6 +46,12 @@ export const taxYears = pgTable(
     userId: uuid('user_id').notNull().references(() => users.id),
     year: integer('year').notNull(),
     status: taxYearStatus('status').notNull().default('draft'),
+    /** Set when confirmed data is REMOVED (per-document deletion, plan
+     *  2026-07-17-document-deletion.md). Deleted confirmation rows are
+     *  invisible to the newer-confirmation stale check — the year only
+     *  looks LESS recently confirmed — so the calculation read route also
+     *  compares this against the snapshot's createdAt. */
+    dataRevisedAt: timestamp('data_revised_at', { withTimezone: true }),
     filedAt: timestamp('filed_at', { withTimezone: true }),
     deadline: timestamp('deadline', { withTimezone: true }),
     notes: text('notes'),

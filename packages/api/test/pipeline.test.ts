@@ -665,6 +665,7 @@ describe('auth', () => {
         url: `/tax-years/${taxYearId}/status`,
         payload: { status: 'in_review' },
       },
+      { method: 'DELETE', url: `/documents/${randomUUID()}` },
     ];
     for (const opts of protectedRoutes) {
       const res = await app.inject(opts);
@@ -1153,6 +1154,41 @@ describe('cross-user isolation', () => {
       expect(res.statusCode, `${opts.method} ${opts.url}`).toBe(404);
       expect(res.json().message).toMatch(/[֐-׿]/);
     }
+  });
+
+  it('404s (Hebrew) on every document-scoped route for another user’s document', async () => {
+    // Inserted directly — the owner cannot upload into the intruder's year.
+    const [doc] = await db
+      .insert(schema.documents)
+      .values({
+        taxYearId: intruderYearId,
+        kind: 'form106',
+        storageKey: 'intruder/tofes106.pdf',
+        originalFilename: 'tofes106.pdf',
+      })
+      .returning();
+    const attempts: InjectOptions[] = [
+      { method: 'GET', url: `/documents/${doc!.id}` },
+      { method: 'GET', url: `/documents/${doc!.id}/file` },
+      { method: 'POST', url: `/documents/${doc!.id}/extract` },
+      {
+        method: 'POST',
+        url: `/documents/${doc!.id}/confirm`,
+        payload: { payload: confirmedForm106 },
+      },
+      { method: 'DELETE', url: `/documents/${doc!.id}` },
+    ];
+    for (const opts of attempts) {
+      const res = await authedInject(opts);
+      expect(res.statusCode, `${opts.method} ${opts.url}`).toBe(404);
+      expect(res.json().message).toMatch(/[֐-׿]/);
+    }
+    // The intruder's document row is fully intact after the blocked DELETE.
+    const [still] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, doc!.id));
+    expect(still).toBeDefined();
   });
 
   it('does NOT upload documents into another user’s year', async () => {
