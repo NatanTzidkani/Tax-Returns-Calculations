@@ -199,6 +199,17 @@ export function uploadDocument(
   });
 }
 
+/**
+ * `DELETE /documents/:id`. Resolves on the API's 204; a missing/foreign
+ * document is a Hebrew 404 and a document of a filed year a Hebrew 409, both
+ * surfaced via ApiError. Deletes the document row, its extracted/confirmed
+ * data and the stored blob server-side (calculation snapshots are append-only
+ * and stay — the calculation's `stale` flag flips instead).
+ */
+export function deleteDocument(documentId: string): Promise<void> {
+  return request<void>(`/documents/${documentId}`, { method: 'DELETE' });
+}
+
 export function extractDocument(documentId: string): Promise<TaxDocument> {
   return request<TaxDocument>(`/documents/${documentId}/extract`, { method: 'POST' });
 }

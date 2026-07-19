@@ -392,6 +392,18 @@ export const resources = {
         confirm: 'מחיקה',
         error: 'מחיקת שנת המס נכשלה',
       },
+      // --- Delete a single document (DELETE /documents/:id) with confirmation
+      deleteDocument: {
+        // Accessible label + tooltip for the icon-only per-row control in the
+        // documents panel (rendered as a trash-can button, no visible text).
+        triggerAria: 'מחיקת המסמך {{filename}}',
+        dialogTitle: 'מחיקת מסמך',
+        dialogBody:
+          'האם אתה בטוח שברצונך למחוק את המסמך {{filename}}? הנתונים שחולצו ואושרו ממנו יימחקו לצמיתות. פעולה זו בלתי הפיכה.',
+        cancel: 'ביטול',
+        confirm: 'מחיקה',
+        error: 'מחיקת המסמך נכשלה',
+      },
     },
   },
 } as const;
