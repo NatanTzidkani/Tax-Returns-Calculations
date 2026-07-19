@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { documentSchemas, type ExtractableDocumentKind } from '@taxreturns/shared';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ResolvedDeps } from '../app';
@@ -257,7 +257,10 @@ export async function documentRoutes(
       if (confirmedRemoved > 0) {
         await tx
           .update(taxYears)
-          .set({ dataRevisedAt: new Date() })
+          // DB clock (not JS `new Date()`) so this timestamp is comparable to
+          // the DB-generated calculation `createdAt` the stale check tests it
+          // against — no cross-clock skew.
+          .set({ dataRevisedAt: sql`now()` })
           .where(eq(taxYears.id, taxYear.id));
       }
     });
