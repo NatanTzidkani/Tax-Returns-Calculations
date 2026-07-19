@@ -1,6 +1,6 @@
 # Review edits autosave as drafts — the unmet spec §9.3 promise
 
-**Date:** 2026-07-17 · **Status:** planned
+**Date:** 2026-07-17 · **Status:** complete (2026-07-18)
 **Spec anchor:** design spec §9.3 — "**User input is never lost.** Review
 edits autosave as drafts; confirmations are transactional; calculations are
 append-only." Confirmations and calculations were delivered in Plans 3/5;
@@ -98,14 +98,14 @@ only):
 
 ## TDD steps
 
-- [ ] **Lib red:** `src/lib/review-draft.test.ts` — fingerprint is stable
+- [x] **Lib red:** `src/lib/review-draft.test.ts` — fingerprint is stable
       under key reordering and differs across payloads; load rejects
       corrupt JSON / wrong version / wrong shape (and removes them);
       `formStateFromPayload` mirrors the current screen initializers (106
       boxes → shekel-string rows, null → empty form); `resolveDraft`
       returns server/no-notice, draft/restored, server/stale-dropped, and
       deletes the equal draft. Implement the module.
-- [ ] **Screen red:** extend `DocumentReview.test.tsx` (same style,
+- [x] **Screen red:** extend `DocumentReview.test.tsx` (same style,
       `localStorage.clear()` per test): (1) editing an extracted form106
       autosaves a v1 record with the base fingerprint and the typed value;
       (2) a differing seeded draft restores with the Hebrew notice and the
@@ -114,7 +114,7 @@ only):
       a stale-fingerprint draft is dropped with its own notice and the
       fresh extraction's values render; (5) a successful confirm clears the
       draft. Implement the hook + wiring + i18n keys.
-- [ ] `pnpm --filter @taxreturns/web test` + `typecheck` + root `pnpm
+- [x] `pnpm --filter @taxreturns/web test` + `typecheck` + root `pnpm
       typecheck` green; plan marked complete.
 
 ## Out of scope / future work

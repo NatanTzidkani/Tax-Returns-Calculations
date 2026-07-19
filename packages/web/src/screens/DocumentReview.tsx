@@ -10,7 +10,14 @@ import {
   type Form867,
 } from '@taxreturns/shared';
 import { Label } from 'radix-ui';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   confirmDocument,
@@ -20,6 +27,24 @@ import {
   getDocument,
 } from '../api/client';
 import { ExtractionStatusChip } from '../components/StatusChip';
+import {
+  type BoxRow,
+  type CharityFormState,
+  clearStoredDraft,
+  DRAFT_DEBOUNCE_MS,
+  type DraftNotice,
+  FORM867_MONEY_FIELDS,
+  type Form106FormState,
+  type Form867FormState,
+  formStateFromPayload,
+  formStatesEqual,
+  makeStoredDraft,
+  resolveDraft,
+  type ReviewableKind,
+  type ReviewFormState,
+  type ReviewPayload,
+  saveStoredDraft,
+} from '../lib/review-draft';
 
 const route = getRouteApi('/tax-years/$taxYearId/documents/$documentId');
 
@@ -70,6 +95,11 @@ const uncertainLegendClasses =
   'rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 ' +
   'dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200';
 
+/** Informational (non-error) treatment for the draft notices — spec §9.3. */
+const draftNoticeClasses =
+  'rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 ' +
+  'dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200';
+
 const linkClasses =
   'font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300';
 
@@ -77,11 +107,6 @@ const linkClasses =
 const DOCUMENTED_BOX_CODES = ['158', '042', '045'] as const;
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
-
-/** Display integer agorot as a shekel string for editing (e.g. 308625 → "3086.25"). */
-function agorotToShekelString(value: number | undefined): string {
-  return value === undefined ? '' : String(value / 100);
-}
 
 /**
  * Parse a shekel input string into integer agorot. Empty/garbage input maps
@@ -167,8 +192,18 @@ function FileViewer({ documentId, filename }: { documentId: string; filename: st
 
 // --- shared form scaffolding ------------------------------------------------
 
-interface ReviewFormProps<P> {
+interface ReviewFormProps<P, F extends ReviewFormState> {
+  /** Server payload — used only for the uncertain-field highlighting. */
   initial: P | null;
+  /**
+   * Raw form state to start from: the server-derived derivation from
+   * lib/review-draft (single derivation shared with drafts) OR a restored
+   * draft. The form owns its state after mount; a remount (key bump)
+   * resets it.
+   */
+  initialForm: F;
+  /** Reports the FULL raw form state on every change (draft autosave). */
+  onFormChange: (form: F) => void;
   readOnly: boolean;
   onConfirm: (payload: DocumentPayload) => void;
   confirmPending: boolean;
@@ -230,46 +265,36 @@ function FormActions({
 
 // --- Form 106 ---------------------------------------------------------------
 
-interface BoxRow {
-  code: string;
-  amountShekels: string;
-}
-
 function Form106Form({
   initial,
+  initialForm,
+  onFormChange,
   readOnly,
   onConfirm,
   confirmPending,
   confirmFailed,
-}: ReviewFormProps<Form106>) {
+}: ReviewFormProps<Form106, Form106FormState>) {
   const { t } = useTranslation();
   const uncertainBoxes = initial?.uncertainBoxes ?? [];
-  const [taxYear, setTaxYear] = useState(initial ? String(initial.taxYear) : '');
-  const [employerName, setEmployerName] = useState(initial?.employerName ?? '');
-  const [deductionsFileId, setDeductionsFileId] = useState(
-    initial?.employerDeductionsFileId ?? '',
-  );
-  const [nationalId, setNationalId] = useState(initial?.employeeNationalId ?? '');
-  const [rows, setRows] = useState<BoxRow[]>(() =>
-    initial
-      ? Object.entries(initial.boxes).map(([code, amount]) => ({
-          code,
-          amountShekels: agorotToShekelString(amount),
-        }))
-      : [{ code: '', amountShekels: '' }],
-  );
+  const [form, setForm] = useState(initialForm);
   const [invalid, setInvalid] = useState(false);
   const [duplicateCode, setDuplicateCode] = useState<string | null>(null);
 
+  function update(patch: Partial<Form106FormState>) {
+    const next = { ...form, ...patch };
+    setForm(next);
+    onFormChange(next);
+  }
+
   function updateRow(index: number, patch: Partial<BoxRow>) {
-    setRows((current) =>
-      current.map((row, i) => (i === index ? { ...row, ...patch } : row)),
-    );
+    update({
+      rows: form.rows.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    });
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const activeRows = rows.filter(
+    const activeRows = form.rows.filter(
       (row) => row.code.trim() !== '' || row.amountShekels.trim() !== '',
     );
 
@@ -286,10 +311,10 @@ function Form106Form({
     setDuplicateCode(null);
 
     const candidate = {
-      taxYear: parseYear(taxYear),
-      employerName,
-      employerDeductionsFileId: deductionsFileId,
-      employeeNationalId: nationalId,
+      taxYear: parseYear(form.taxYear),
+      employerName: form.employerName,
+      employerDeductionsFileId: form.deductionsFileId,
+      employeeNationalId: form.nationalId,
       boxes: Object.fromEntries(
         activeRows.map((row) => [row.code.trim(), shekelInputToAgorot(row.amountShekels)]),
       ),
@@ -309,8 +334,8 @@ function Form106Form({
         <input
           id="form106-tax-year"
           type="number"
-          value={taxYear}
-          onChange={(event) => setTaxYear(event.target.value)}
+          value={form.taxYear}
+          onChange={(event) => update({ taxYear: event.target.value })}
           disabled={readOnly}
           className={fieldClasses}
         />
@@ -319,8 +344,8 @@ function Form106Form({
         <input
           id="form106-employer-name"
           type="text"
-          value={employerName}
-          onChange={(event) => setEmployerName(event.target.value)}
+          value={form.employerName}
+          onChange={(event) => update({ employerName: event.target.value })}
           disabled={readOnly}
           className={fieldClasses}
         />
@@ -332,8 +357,8 @@ function Form106Form({
         <input
           id="form106-deductions-file"
           type="text"
-          value={deductionsFileId}
-          onChange={(event) => setDeductionsFileId(event.target.value)}
+          value={form.deductionsFileId}
+          onChange={(event) => update({ deductionsFileId: event.target.value })}
           disabled={readOnly}
           className={fieldClasses}
         />
@@ -342,8 +367,8 @@ function Form106Form({
         <input
           id="form106-national-id"
           type="text"
-          value={nationalId}
-          onChange={(event) => setNationalId(event.target.value)}
+          value={form.nationalId}
+          onChange={(event) => update({ nationalId: event.target.value })}
           disabled={readOnly}
           className={fieldClasses}
         />
@@ -351,7 +376,7 @@ function Form106Form({
 
       <fieldset className="flex flex-col gap-3">
         <legend className={`${labelClasses} mb-2`}>{t('documentReview.boxes.title')}</legend>
-        {rows.map((row, index) => {
+        {form.rows.map((row, index) => {
           const uncertain = uncertainBoxes.includes(row.code);
           const documented = (DOCUMENTED_BOX_CODES as readonly string[]).includes(
             row.code,
@@ -411,7 +436,7 @@ function Form106Form({
                   <button
                     type="button"
                     onClick={() =>
-                      setRows((current) => current.filter((_, i) => i !== index))
+                      update({ rows: form.rows.filter((_, i) => i !== index) })
                     }
                     className={secondaryButtonClasses}
                   >
@@ -427,7 +452,7 @@ function Form106Form({
             <button
               type="button"
               onClick={() =>
-                setRows((current) => [...current, { code: '', amountShekels: '' }])
+                update({ rows: [...form.rows, { code: '', amountShekels: '' }] })
               }
               className={secondaryButtonClasses}
             >
@@ -455,46 +480,37 @@ function Form106Form({
 
 // --- Form 867 ---------------------------------------------------------------
 
-const FORM867_MONEY_FIELDS = [
-  'realGainsAgorot',
-  'realLossesAgorot',
-  'interestDividendAgorot',
-  'taxWithheldAgorot',
-] as const;
-
-type Form867MoneyField = (typeof FORM867_MONEY_FIELDS)[number];
-
 function Form867Form({
   initial,
+  initialForm,
+  onFormChange,
   readOnly,
   onConfirm,
   confirmPending,
   confirmFailed,
-}: ReviewFormProps<Form867>) {
+}: ReviewFormProps<Form867, Form867FormState>) {
   const { t } = useTranslation();
   const uncertainFields = initial?.uncertainFields ?? [];
-  const [taxYear, setTaxYear] = useState(initial ? String(initial.taxYear) : '');
-  const [brokerName, setBrokerName] = useState(initial?.brokerName ?? '');
-  const [accountId, setAccountId] = useState(initial?.accountId ?? '');
-  const [amounts, setAmounts] = useState<Record<Form867MoneyField, string>>({
-    realGainsAgorot: agorotToShekelString(initial?.realGainsAgorot),
-    realLossesAgorot: agorotToShekelString(initial?.realLossesAgorot),
-    interestDividendAgorot: agorotToShekelString(initial?.interestDividendAgorot),
-    taxWithheldAgorot: agorotToShekelString(initial?.taxWithheldAgorot),
-  });
+  const [form, setForm] = useState(initialForm);
   const [invalid, setInvalid] = useState(false);
+
+  function update(patch: Partial<Form867FormState>) {
+    const next = { ...form, ...patch };
+    setForm(next);
+    onFormChange(next);
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedAccountId = accountId.trim();
+    const trimmedAccountId = form.accountId.trim();
     const candidate = {
-      taxYear: parseYear(taxYear),
-      brokerName,
+      taxYear: parseYear(form.taxYear),
+      brokerName: form.brokerName,
       ...(trimmedAccountId === '' ? {} : { accountId: trimmedAccountId }),
-      realGainsAgorot: shekelInputToAgorot(amounts.realGainsAgorot),
-      realLossesAgorot: shekelInputToAgorot(amounts.realLossesAgorot),
-      interestDividendAgorot: shekelInputToAgorot(amounts.interestDividendAgorot),
-      taxWithheldAgorot: shekelInputToAgorot(amounts.taxWithheldAgorot),
+      realGainsAgorot: shekelInputToAgorot(form.amounts.realGainsAgorot),
+      realLossesAgorot: shekelInputToAgorot(form.amounts.realLossesAgorot),
+      interestDividendAgorot: shekelInputToAgorot(form.amounts.interestDividendAgorot),
+      taxWithheldAgorot: shekelInputToAgorot(form.amounts.taxWithheldAgorot),
     };
     const parsed = Form867Schema.safeParse(candidate);
     if (!parsed.success) {
@@ -511,8 +527,8 @@ function Form867Form({
         <input
           id="form867-tax-year"
           type="number"
-          value={taxYear}
-          onChange={(event) => setTaxYear(event.target.value)}
+          value={form.taxYear}
+          onChange={(event) => update({ taxYear: event.target.value })}
           disabled={readOnly}
           className={fieldClasses}
         />
@@ -521,8 +537,8 @@ function Form867Form({
         <input
           id="form867-broker-name"
           type="text"
-          value={brokerName}
-          onChange={(event) => setBrokerName(event.target.value)}
+          value={form.brokerName}
+          onChange={(event) => update({ brokerName: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainFields.includes('brokerName') ? 'true' : undefined}
           className={
@@ -534,8 +550,8 @@ function Form867Form({
         <input
           id="form867-account-id"
           type="text"
-          value={accountId}
-          onChange={(event) => setAccountId(event.target.value)}
+          value={form.accountId}
+          onChange={(event) => update({ accountId: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainFields.includes('accountId') ? 'true' : undefined}
           className={
@@ -551,9 +567,9 @@ function Form867Form({
               id={`form867-${field}`}
               type="text"
               inputMode="decimal"
-              value={amounts[field]}
+              value={form.amounts[field]}
               onChange={(event) =>
-                setAmounts((current) => ({ ...current, [field]: event.target.value }))
+                update({ amounts: { ...form.amounts, [field]: event.target.value } })
               }
               disabled={readOnly}
               data-uncertain={uncertain ? 'true' : undefined}
@@ -576,25 +592,23 @@ function Form867Form({
 
 function CharityReceiptForm({
   initial,
+  initialForm,
+  onFormChange,
   readOnly,
   onConfirm,
   confirmPending,
   confirmFailed,
-}: ReviewFormProps<CharityReceipt>) {
+}: ReviewFormProps<CharityReceipt, CharityFormState>) {
   const { t } = useTranslation();
   const uncertainFields = initial?.uncertainFields ?? [];
-  const [taxYear, setTaxYear] = useState(initial ? String(initial.taxYear) : '');
-  const [institutionName, setInstitutionName] = useState(initial?.institutionName ?? '');
-  const [registrationId, setRegistrationId] = useState(
-    initial?.institutionRegistrationId ?? '',
-  );
-  const [receiptNumber, setReceiptNumber] = useState(initial?.receiptNumber ?? '');
-  const [amountShekels, setAmountShekels] = useState(
-    agorotToShekelString(initial?.amountAgorot),
-  );
-  const [donationDate, setDonationDate] = useState(initial?.donationDate ?? '');
-  const [hasApproval, setHasApproval] = useState(initial?.hasSection46Approval ?? false);
+  const [form, setForm] = useState(initialForm);
   const [invalid, setInvalid] = useState(false);
+
+  function update(patch: Partial<CharityFormState>) {
+    const next = { ...form, ...patch };
+    setForm(next);
+    onFormChange(next);
+  }
 
   function classesFor(field: string): string {
     return uncertainFields.includes(field) ? uncertainFieldClasses : fieldClasses;
@@ -606,19 +620,19 @@ function CharityReceiptForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedRegistrationId = registrationId.trim();
-    const trimmedReceiptNumber = receiptNumber.trim();
-    const trimmedDate = donationDate.trim();
+    const trimmedRegistrationId = form.registrationId.trim();
+    const trimmedReceiptNumber = form.receiptNumber.trim();
+    const trimmedDate = form.donationDate.trim();
     const candidate = {
-      taxYear: parseYear(taxYear),
-      institutionName,
+      taxYear: parseYear(form.taxYear),
+      institutionName: form.institutionName,
       ...(trimmedRegistrationId === ''
         ? {}
         : { institutionRegistrationId: trimmedRegistrationId }),
       ...(trimmedReceiptNumber === '' ? {} : { receiptNumber: trimmedReceiptNumber }),
-      amountAgorot: shekelInputToAgorot(amountShekels),
+      amountAgorot: shekelInputToAgorot(form.amountShekels),
       ...(trimmedDate === '' ? {} : { donationDate: trimmedDate }),
-      hasSection46Approval: hasApproval,
+      hasSection46Approval: form.hasApproval,
     };
     const parsed = CharityReceiptSchema.safeParse(candidate);
     if (!parsed.success) {
@@ -635,8 +649,8 @@ function CharityReceiptForm({
         <input
           id="charity-tax-year"
           type="number"
-          value={taxYear}
-          onChange={(event) => setTaxYear(event.target.value)}
+          value={form.taxYear}
+          onChange={(event) => update({ taxYear: event.target.value })}
           disabled={readOnly}
           className={fieldClasses}
         />
@@ -645,8 +659,8 @@ function CharityReceiptForm({
         <input
           id="charity-institution-name"
           type="text"
-          value={institutionName}
-          onChange={(event) => setInstitutionName(event.target.value)}
+          value={form.institutionName}
+          onChange={(event) => update({ institutionName: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainAttr('institutionName')}
           className={classesFor('institutionName')}
@@ -659,8 +673,8 @@ function CharityReceiptForm({
         <input
           id="charity-registration-id"
           type="text"
-          value={registrationId}
-          onChange={(event) => setRegistrationId(event.target.value)}
+          value={form.registrationId}
+          onChange={(event) => update({ registrationId: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainAttr('institutionRegistrationId')}
           className={classesFor('institutionRegistrationId')}
@@ -670,8 +684,8 @@ function CharityReceiptForm({
         <input
           id="charity-receipt-number"
           type="text"
-          value={receiptNumber}
-          onChange={(event) => setReceiptNumber(event.target.value)}
+          value={form.receiptNumber}
+          onChange={(event) => update({ receiptNumber: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainAttr('receiptNumber')}
           className={classesFor('receiptNumber')}
@@ -682,8 +696,8 @@ function CharityReceiptForm({
           id="charity-amount"
           type="text"
           inputMode="decimal"
-          value={amountShekels}
-          onChange={(event) => setAmountShekels(event.target.value)}
+          value={form.amountShekels}
+          onChange={(event) => update({ amountShekels: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainAttr('amountAgorot')}
           className={classesFor('amountAgorot')}
@@ -693,8 +707,8 @@ function CharityReceiptForm({
         <input
           id="charity-donation-date"
           type="date"
-          value={donationDate}
-          onChange={(event) => setDonationDate(event.target.value)}
+          value={form.donationDate}
+          onChange={(event) => update({ donationDate: event.target.value })}
           disabled={readOnly}
           data-uncertain={uncertainAttr('donationDate')}
           className={classesFor('donationDate')}
@@ -704,8 +718,8 @@ function CharityReceiptForm({
         <input
           id="charity-section46"
           type="checkbox"
-          checked={hasApproval}
-          onChange={(event) => setHasApproval(event.target.checked)}
+          checked={form.hasApproval}
+          onChange={(event) => update({ hasApproval: event.target.checked })}
           disabled={readOnly}
           data-uncertain={uncertainAttr('hasSection46Approval')}
           className="size-4 rounded border-neutral-300 accent-blue-700 dark:border-neutral-700"
@@ -724,40 +738,223 @@ function CharityReceiptForm({
   );
 }
 
+// --- draft autosave (spec §9.3 "user input is never lost") -------------------
+
+interface ReviewDraftApi {
+  /** Server-derived form state OR a restored draft — what the form mounts with. */
+  initialForm: ReviewFormState;
+  notice: DraftNotice | null;
+  /** Bumped on discard so the kind form remounts on the server values. */
+  formVersion: number;
+  /** Debounced autosave of the full raw form state (browser-local only). */
+  reportForm: (form: ReviewFormState) => void;
+  /** Delete the draft and remount the form on the server values. */
+  discard: () => void;
+  /** Delete the draft with any pending debounce cancelled (confirm success). */
+  clearBeforeConfirm: () => void;
+}
+
+function useReviewDraft(
+  documentId: string,
+  kind: ReviewableKind,
+  basePayload: ReviewPayload | null,
+  enabled: boolean,
+): ReviewDraftApi {
+  // Lazy resolve is PURE except for loadStoredDraft's idempotent removal of
+  // unreadable records — StrictMode-safe. The removal of a VALID stored
+  // draft (stale/equal) is applied in the mount effect below.
+  const [resolution, setResolution] = useState(() => {
+    const serverForm = formStateFromPayload(kind, basePayload);
+    return enabled
+      ? resolveDraft(documentId, kind, basePayload, serverForm)
+      : { initialForm: serverForm, notice: null, dropStored: false };
+  });
+  const [formVersion, setFormVersion] = useState(0);
+
+  const timerRef = useRef<number | null>(null);
+  const pendingRef = useRef<ReviewFormState | null>(null);
+  // Latest identifying inputs for the debounced writer (query refetches may
+  // hand us new object identities without a remount).
+  const kindRef = useRef(kind);
+  kindRef.current = kind;
+  const baseRef = useRef(basePayload);
+  baseRef.current = basePayload;
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  const cancelPending = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    pendingRef.current = null;
+  }, []);
+
+  const flushPending = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const form = pendingRef.current;
+    if (form === null) return;
+    pendingRef.current = null;
+    // A form identical to the server-derived state clears the draft instead
+    // of saving it — no junk records.
+    const serverForm = formStateFromPayload(kindRef.current, baseRef.current);
+    if (formStatesEqual(form, serverForm)) {
+      clearStoredDraft(documentId);
+    } else {
+      saveStoredDraft(
+        documentId,
+        makeStoredDraft(kindRef.current, baseRef.current, form),
+      );
+    }
+  }, [documentId]);
+
+  // Apply the resolve's removal decision once, as a mount side effect.
+  useEffect(() => {
+    if (resolution.dropStored) clearStoredDraft(documentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: the resolve ran once in the lazy initializer
+  }, []);
+
+  // Flush on unmount so a navigation right after typing still saves.
+  useEffect(() => () => flushPending(), [flushPending]);
+
+  const reportForm = useCallback(
+    (form: ReviewFormState) => {
+      if (!enabledRef.current) return;
+      pendingRef.current = form;
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(flushPending, DRAFT_DEBOUNCE_MS);
+    },
+    [flushPending],
+  );
+
+  const discard = useCallback(() => {
+    cancelPending();
+    clearStoredDraft(documentId);
+    setResolution({
+      initialForm: formStateFromPayload(kindRef.current, baseRef.current),
+      notice: null,
+      dropStored: false,
+    });
+    setFormVersion((version) => version + 1);
+  }, [cancelPending, documentId]);
+
+  const clearBeforeConfirm = useCallback(() => {
+    // Cancel any pending debounce FIRST so the unmount flush cannot
+    // resurrect the draft after a successful confirm.
+    cancelPending();
+    clearStoredDraft(documentId);
+  }, [cancelPending, documentId]);
+
+  return {
+    initialForm: resolution.initialForm,
+    notice: resolution.notice,
+    formVersion,
+    reportForm,
+    discard,
+    clearBeforeConfirm,
+  };
+}
+
 // --- review panel (status-driven) --------------------------------------------
 
-function KindForm({
+/**
+ * Owns the confirm mutation AND the draft lifecycle so that clearing the
+ * draft on a successful confirm sits right next to it. Remounted by the
+ * parent whenever edit mode toggles, so the draft resolve reruns on
+ * "עריכה ואישור מחדש".
+ */
+function DraftedKindForm({
   doc,
   initial,
   readOnly,
-  onConfirm,
-  confirmPending,
-  confirmFailed,
+  taxYearId,
 }: {
   doc: DocumentDetail;
   initial: DocumentPayload | null;
   readOnly: boolean;
-  onConfirm: (payload: DocumentPayload) => void;
-  confirmPending: boolean;
-  confirmFailed: boolean;
+  taxYearId: string;
 }) {
-  const shared = { readOnly, onConfirm, confirmPending, confirmFailed };
-  switch (doc.kind) {
-    case 'form106':
-      return <Form106Form initial={initial as Form106 | null} {...shared} />;
-    case 'form867':
-      return <Form867Form initial={initial as Form867 | null} {...shared} />;
-    case 'charity_receipt':
-      return <CharityReceiptForm initial={initial as CharityReceipt | null} {...shared} />;
-    default:
-      return null;
-  }
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const kind = doc.kind as ReviewableKind;
+  const draft = useReviewDraft(doc.id, kind, initial, !readOnly);
+
+  const confirmMutation = useMutation({
+    mutationFn: (payload: DocumentPayload) => confirmDocument(doc.id, payload),
+    onSuccess: async () => {
+      // Clear the draft BEFORE any invalidation/navigation — the confirmed
+      // values are now server truth and the draft must not outlive them.
+      draft.clearBeforeConfirm();
+      await queryClient.invalidateQueries({ queryKey: ['documents', doc.id] });
+      await queryClient.invalidateQueries({
+        queryKey: ['tax-years', taxYearId, 'documents'],
+      });
+      await navigate({ to: '/tax-years/$taxYearId', params: { taxYearId } });
+    },
+  });
+
+  const shared = {
+    readOnly,
+    onFormChange: draft.reportForm,
+    onConfirm: (payload: DocumentPayload) => confirmMutation.mutate(payload),
+    confirmPending: confirmMutation.isPending,
+    confirmFailed: confirmMutation.isError,
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {draft.notice === 'restored' ? (
+        <div role="status" className={draftNoticeClasses}>
+          <p>{t('documentReview.draftRestored')}</p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={draft.discard}
+              className={secondaryButtonClasses}
+            >
+              {t('documentReview.draftDiscard')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {draft.notice === 'staleDropped' ? (
+        <p role="status" className={draftNoticeClasses}>
+          {t('documentReview.draftStaleDropped')}
+        </p>
+      ) : null}
+      {kind === 'form106' ? (
+        <Form106Form
+          key={draft.formVersion}
+          initial={initial as Form106 | null}
+          initialForm={draft.initialForm as Form106FormState}
+          {...shared}
+        />
+      ) : kind === 'form867' ? (
+        <Form867Form
+          key={draft.formVersion}
+          initial={initial as Form867 | null}
+          initialForm={draft.initialForm as Form867FormState}
+          {...shared}
+        />
+      ) : (
+        <CharityReceiptForm
+          key={draft.formVersion}
+          initial={initial as CharityReceipt | null}
+          initialForm={draft.initialForm as CharityFormState}
+          {...shared}
+        />
+      )}
+    </div>
+  );
 }
 
 function ReviewPanel({ doc, taxYearId }: { doc: DocumentDetail; taxYearId: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [manualEntry, setManualEntry] = useState(false);
   const [editingConfirmed, setEditingConfirmed] = useState(false);
 
@@ -768,17 +965,6 @@ function ReviewPanel({ doc, taxYearId }: { doc: DocumentDetail; taxYearId: strin
       await queryClient.invalidateQueries({
         queryKey: ['tax-years', taxYearId, 'documents'],
       });
-    },
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: (payload: DocumentPayload) => confirmDocument(doc.id, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['documents', doc.id] });
-      await queryClient.invalidateQueries({
-        queryKey: ['tax-years', taxYearId, 'documents'],
-      });
-      await navigate({ to: '/tax-years/$taxYearId', params: { taxYearId } });
     },
   });
 
@@ -861,13 +1047,15 @@ function ReviewPanel({ doc, taxYearId }: { doc: DocumentDetail; taxYearId: strin
       ) : null}
 
       {showForm ? (
-        <KindForm
+        <DraftedKindForm
+          // Remount when edit mode toggles so the draft resolve reruns:
+          // the read-only confirmed view leaves a stored draft untouched
+          // until "עריכה ואישור מחדש" re-enters edit mode.
+          key={readOnly ? 'readonly' : 'editable'}
           doc={doc}
           initial={initial}
           readOnly={readOnly}
-          onConfirm={(payload) => confirmMutation.mutate(payload)}
-          confirmPending={confirmMutation.isPending}
-          confirmFailed={confirmMutation.isError}
+          taxYearId={taxYearId}
         />
       ) : null}
     </div>
