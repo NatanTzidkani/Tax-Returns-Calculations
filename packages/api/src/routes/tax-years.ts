@@ -1,16 +1,10 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ResolvedDeps } from '../app';
 import { requireUserId } from '../auth/session';
-import {
-  calculations,
-  confirmedData,
-  documents,
-  extractedFields,
-  lossCarryforward,
-  taxYears,
-} from '../db/schema';
+import { calculations, documents, lossCarryforward, taxYears } from '../db/schema';
+import { deleteBlobsBestEffort, deleteDocumentRows } from '../documents/cascade';
 
 const CreateTaxYearBody = z.object({
   year: z.number().int().min(2000).max(2100),
@@ -120,7 +114,8 @@ export async function taxYearRoutes(
     const documentIds = docRows.map((d) => d.id);
 
     // Cascade in FK-safe order: leaf children first, the tax_years row last.
-    // No onDelete cascade exists in the schema, so every level is explicit.
+    // The document-child slice (extracted → confirmed → documents) is shared
+    // with DELETE /documents/:id — see documents/cascade.ts.
     await deps.db.transaction(async (tx) => {
       await tx.delete(calculations).where(eq(calculations.taxYearId, taxYear.id));
       await tx
@@ -131,28 +126,13 @@ export async function taxYearRoutes(
             eq(lossCarryforward.fromYear, taxYear.year),
           ),
         );
-      if (documentIds.length > 0) {
-        await tx
-          .delete(extractedFields)
-          .where(inArray(extractedFields.documentId, documentIds));
-        await tx
-          .delete(confirmedData)
-          .where(inArray(confirmedData.documentId, documentIds));
-        await tx.delete(documents).where(inArray(documents.id, documentIds));
-      }
+      await deleteDocumentRows(tx, documentIds);
       await tx.delete(taxYears).where(eq(taxYears.id, taxYear.id));
     });
 
-    // Best-effort blob cleanup — a file that already vanished must not fail
-    // the (already-committed) delete.
-    await Promise.all(
-      docRows.map(async (d) => {
-        try {
-          await deps.storage.delete(d.storageKey);
-        } catch {
-          // Tolerate an already-missing file (ENOENT etc.).
-        }
-      }),
+    await deleteBlobsBestEffort(
+      deps.storage,
+      docRows.map((d) => d.storageKey),
     );
 
     return reply.code(204).send();

@@ -3,6 +3,7 @@ import { AlertDialog } from 'radix-ui';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError, deleteTaxYear } from '../api/client';
+import { TrashIcon } from './TrashIcon';
 
 /**
  * "מחיקת שנת מס" — a confirmation-gated delete for a single tax year, built on
@@ -57,28 +58,6 @@ const rowTriggerClasses =
   'hover:bg-red-50 hover:text-red-700 focus-visible:outline focus-visible:outline-2 ' +
   'focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:text-neutral-400 ' +
   'dark:hover:bg-red-950/40 dark:hover:text-red-400';
-
-/** Inline trash-can icon (no icon dependency in this app's package.json). */
-function TrashIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4"
-    >
-      <path d="M3 6h18" />
-      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-    </svg>
-  );
-}
 
 const alertClasses =
   'mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 ' +

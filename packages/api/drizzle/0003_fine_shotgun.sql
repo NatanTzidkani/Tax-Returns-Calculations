@@ -1,0 +1,1 @@
+ALTER TABLE "tax_years" ADD COLUMN "data_revised_at" timestamp with time zone;
