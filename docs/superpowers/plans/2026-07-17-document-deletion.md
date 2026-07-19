@@ -1,6 +1,6 @@
 # Per-document deletion — remove a mistaken upload without nuking the year
 
-**Date:** 2026-07-17 · **Status:** planned
+**Date:** 2026-07-17 · **Status:** complete (2026-07-19)
 **Gap:** there is no `DELETE /documents/:id`. `Storage.delete` is only invoked
 by the tax-year cascade (`DELETE /tax-years/:id`), so a mistakenly-uploaded
 document can only be removed by deleting the entire tax year — with every
@@ -74,7 +74,7 @@ keys; logical properties only; no money handling anywhere in this feature.
 
 ## TDD steps
 
-- [ ] **API red:** new `test/document-deletion.test.ts` (own test db, style of
+- [x] **API red:** new `test/document-deletion.test.ts` (own test db, style of
       `confirmed-data.test.ts`): 401 unauthenticated; 404 Hebrew for
       non-UUID / unknown UUID; full cascade (extracted+confirmed rows gone,
       blob gone, sibling documents untouched, 204); already-missing blob
@@ -87,7 +87,7 @@ keys; logical properties only; no money handling anywhere in this feature.
       401 list). Implement: migration `0003` (`data_revised_at`), cascade
       helper factored out of `tax-years.ts`, the route, the stale-check fix.
       Commit `feat(api): DELETE /documents/:id — scoped cascade, filed-year guard, stale-aware`.
-- [ ] **Web red:** `TaxYearDetail.test.tsx` — each row shows the delete
+- [x] **Web red:** `TaxYearDetail.test.tsx` — each row shows the delete
       button (Hebrew aria-label with the filename); confirm calls
       `deleteDocument(id)` and refetches the documents list + confirmed-data
       panel; cancel calls nothing; a server Hebrew error (409) shows verbatim
@@ -95,7 +95,7 @@ keys; logical properties only; no money handling anywhere in this feature.
       `DeleteDocumentDialog` (+ shared `TrashIcon` extracted from
       `DeleteTaxYearDialog`), panel wiring, i18n keys. Commit
       `feat(web): per-document delete with confirmation in the documents panel`.
-- [ ] Full root green (`pnpm typecheck`, api+web suites); CLAUDE.md rows +
+- [x] Full root green (`pnpm typecheck`, api+web suites); CLAUDE.md rows +
       this plan marked done. Commit `docs: note per-document deletion in CLAUDE.md`.
 
 ## Out of scope
