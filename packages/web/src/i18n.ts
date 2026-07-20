@@ -104,6 +104,14 @@ export const resources = {
           'קוד התיבה {{code}} מופיע ביותר משורה אחת — יש לאחד את השורות הכפולות.',
         confirmedNote: 'המסמך אושר. הנתונים המאושרים מוצגים לקריאה בלבד.',
         editConfirmed: 'עריכה ואישור מחדש',
+        // --- Review-edit drafts (spec §9.3 "user input is never lost";
+        // plan 2026-07-17-review-autosave-drafts.md). Drafts live in the
+        // browser only — they never reach the server.
+        draftRestored:
+          'שוחזרה טיוטה שטרם אושרה — הטופס מציג שינויים שנשמרו בדפדפן בלבד וטרם אושרו.',
+        draftDiscard: 'ביטול הטיוטה וחזרה לנתוני המקור',
+        draftStaleDropped:
+          'טיוטה קודמת נמחקה מכיוון שהמסמך חולץ מחדש — מוצגים נתוני החילוץ העדכניים.',
         otherKindNote:
           'למסמך מסוג "אחר" אין נתונים לחילוץ או לאישור — הקובץ מוצג לעיון בלבד.',
         fields: {
@@ -391,6 +399,18 @@ export const resources = {
         cancel: 'ביטול',
         confirm: 'מחיקה',
         error: 'מחיקת שנת המס נכשלה',
+      },
+      // --- Delete a single document (DELETE /documents/:id) with confirmation
+      deleteDocument: {
+        // Accessible label + tooltip for the icon-only per-row control in the
+        // documents panel (rendered as a trash-can button, no visible text).
+        triggerAria: 'מחיקת המסמך {{filename}}',
+        dialogTitle: 'מחיקת מסמך',
+        dialogBody:
+          'האם אתה בטוח שברצונך למחוק את המסמך {{filename}}? הנתונים שחולצו ואושרו ממנו יימחקו לצמיתות. פעולה זו בלתי הפיכה.',
+        cancel: 'ביטול',
+        confirm: 'מחיקה',
+        error: 'מחיקת המסמך נכשלה',
       },
     },
   },

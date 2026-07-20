@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { documentSchemas, type ExtractableDocumentKind } from '@taxreturns/shared';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ResolvedDeps } from '../app';
 import { requireUserId } from '../auth/session';
 import { confirmedData, documents, extractedFields, taxYears } from '../db/schema';
+import { deleteBlobsBestEffort, deleteDocumentRows } from '../documents/cascade';
 import { ExtractionFailedError, extractDocument } from '../extraction/extractor';
 
 const DOCUMENT_KINDS = ['form106', 'form867', 'charity_receipt', 'other'] as const;
@@ -23,6 +24,8 @@ const MSG = {
   extractOther: 'לא ניתן להפעיל חילוץ על מסמך מסוג "אחר" — אין לו סכימת נתונים',
   confirmOther: 'לא ניתן לאשר נתונים למסמך מסוג "אחר" — אין לו סכימת נתונים',
   missingPayload: 'חסר שדה payload בגוף הבקשה',
+  deleteFiledYear:
+    'לא ניתן למחוק מסמך משנת מס שהוגשה — מסמכי המקור של דוח שהוגש חייבים להישמר',
 } as const;
 
 /** Media type by file extension — extraction supports PDF and common images. */
@@ -64,16 +67,22 @@ export async function documentRoutes(
 ): Promise<void> {
   const { deps } = opts;
 
-  /** Loads a document only if its tax year belongs to the requester. */
-  async function loadDocument(rawId: string, req: FastifyRequest) {
+  /** Loads a document AND its tax year, only if the year belongs to the
+   *  requester (the delete route needs the year's status and id). */
+  async function loadDocumentWithYear(rawId: string, req: FastifyRequest) {
     const parsed = uuid.safeParse(rawId);
     if (!parsed.success) return undefined;
     const [row] = await deps.db
-      .select()
+      .select({ document: documents, taxYear: taxYears })
       .from(documents)
       .innerJoin(taxYears, eq(documents.taxYearId, taxYears.id))
       .where(and(eq(documents.id, parsed.data), eq(taxYears.userId, requireUserId(req))));
-    return row?.documents;
+    return row;
+  }
+
+  /** Loads a document only if its tax year belongs to the requester. */
+  async function loadDocument(rawId: string, req: FastifyRequest) {
+    return (await loadDocumentWithYear(rawId, req))?.document;
   }
 
   /** Loads a tax year only if it belongs to the requester — otherwise 404. */
@@ -228,6 +237,41 @@ export async function documentRoutes(
       // tell browsers not to sniff their own idea of the content type.
       .header('x-content-type-options', 'nosniff')
       .send(data);
+  });
+
+  app.delete('/documents/:id', async (req, reply) => {
+    const row = await loadDocumentWithYear((req.params as { id: string }).id, req);
+    if (!row) return reply.code(404).send({ message: MSG.documentNotFound });
+    const { document: doc, taxYear } = row;
+
+    // Source documents of a FILED return must stay — the filed Form 1301 was
+    // produced from them. Every other status (incl. amended: a return being
+    // reworked) may delete (plan 2026-07-17-document-deletion.md).
+    if (taxYear.status === 'filed') {
+      return reply.code(409).send({ message: MSG.deleteFiledYear });
+    }
+
+    // Same child-cascade order as the tax-year delete (shared helper); blob
+    // cleanup runs after the commit, best-effort.
+    await deps.db.transaction(async (tx) => {
+      const { confirmedRemoved } = await deleteDocumentRows(tx, [doc.id]);
+      // Removed confirmations are invisible to the newer-confirmation stale
+      // check (the year only looks LESS recently confirmed) — record the
+      // revision on the year, but only when calculation input actually
+      // changed (a never-confirmed document fed no snapshot).
+      if (confirmedRemoved > 0) {
+        await tx
+          .update(taxYears)
+          // DB clock (not JS `new Date()`) so this timestamp is comparable to
+          // the DB-generated calculation `createdAt` the stale check tests it
+          // against — no cross-clock skew.
+          .set({ dataRevisedAt: sql`now()` })
+          .where(eq(taxYears.id, taxYear.id));
+      }
+    });
+    await deleteBlobsBestEffort(deps.storage, [doc.storageKey]);
+
+    return reply.code(204).send();
   });
 
   app.get('/documents/:id', async (req, reply) => {

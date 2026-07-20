@@ -10,6 +10,7 @@ import {
   uploadDocument,
 } from '../api/client';
 import { DataPanel } from '../components/DataPanel';
+import { DeleteDocumentDialog } from '../components/DeleteDocumentDialog';
 import { DeleteTaxYearDialog } from '../components/DeleteTaxYearDialog';
 import { ExtractionStatusChip } from '../components/StatusChip';
 import { WorksheetPanel } from '../components/WorksheetPanel';
@@ -172,6 +173,11 @@ function DocumentsPanel({ taxYearId }: { taxYearId: string }) {
                 >
                   {t('taxYearDetail.reviewLink')}
                 </Link>
+                <DeleteDocumentDialog
+                  taxYearId={taxYearId}
+                  documentId={document.id}
+                  filename={document.originalFilename}
+                />
               </span>
             </li>
           ))}

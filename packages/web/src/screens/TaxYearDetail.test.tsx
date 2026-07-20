@@ -1,11 +1,14 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { agorot } from '@taxreturns/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TaxDocument, TaxYear } from '../api/client';
+import type { ConfirmedDataSummary, TaxDocument, TaxYear } from '../api/client';
 import {
   ApiError,
+  deleteDocument,
   deleteTaxYear,
   getCalculation,
+  getConfirmedData,
   getMe,
   listDocuments,
   listTaxYears,
@@ -23,7 +26,9 @@ vi.mock('../api/client', async () => {
     listDocuments: vi.fn(),
     uploadDocument: vi.fn(),
     getCalculation: vi.fn(),
+    getConfirmedData: vi.fn(),
     deleteTaxYear: vi.fn(),
+    deleteDocument: vi.fn(),
     getMe: vi.fn(),
   };
 });
@@ -51,12 +56,21 @@ const documents: TaxDocument[] = [
   },
 ];
 
+const emptySummary: ConfirmedDataSummary = {
+  salaries: [],
+  donations: [],
+  excludedDonations: 0,
+  capital: { entries: [], lossCarryforwardInAgorot: agorot(0) },
+};
+
 beforeEach(() => {
   vi.mocked(listTaxYears).mockReset().mockResolvedValue([taxYear]);
   vi.mocked(listDocuments).mockReset().mockResolvedValue(documents);
   vi.mocked(uploadDocument).mockReset();
   vi.mocked(getCalculation).mockReset().mockResolvedValue(null);
+  vi.mocked(getConfirmedData).mockReset().mockResolvedValue(emptySummary);
   vi.mocked(deleteTaxYear).mockReset().mockResolvedValue(undefined);
+  vi.mocked(deleteDocument).mockReset().mockResolvedValue(undefined);
   vi.mocked(getMe)
     .mockReset()
     .mockResolvedValue({ id: 'u1', email: 'owner@example.com' });
@@ -186,5 +200,100 @@ describe('TaxYearDetail', () => {
     // No navigation away from the detail screen on failure. (The heading is
     // aria-hidden behind the open modal, so assert via the router instead.)
     expect(router.state.location.pathname).toBe('/tax-years/ty-2024');
+  });
+
+  it('shows a per-row delete button labelled with the document filename', async () => {
+    await renderApp('/tax-years/ty-2024');
+
+    const list = await screen.findByRole('list');
+    expect(
+      within(list).getByRole('button', { name: 'מחיקת המסמך tofes106.pdf' }),
+    ).toBeTruthy();
+    expect(
+      within(list).getByRole('button', { name: 'מחיקת המסמך receipt.jpg' }),
+    ).toBeTruthy();
+  });
+
+  it('deletes a document through the confirmation dialog and refetches the documents and data panels', async () => {
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    const list = await screen.findByRole('list');
+    const documentsFetches = vi.mocked(listDocuments).mock.calls.length;
+    const confirmedDataFetches = vi.mocked(getConfirmedData).mock.calls.length;
+    const calculationFetches = vi.mocked(getCalculation).mock.calls.length;
+
+    await user.click(
+      within(list).getByRole('button', { name: 'מחיקת המסמך tofes106.pdf' }),
+    );
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(
+      within(dialog).getByText(
+        'האם אתה בטוח שברצונך למחוק את המסמך tofes106.pdf? הנתונים שחולצו ואושרו ממנו יימחקו לצמיתות. פעולה זו בלתי הפיכה.',
+      ),
+    ).toBeTruthy();
+    // Not called until the user confirms.
+    expect(deleteDocument).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'מחיקה' }));
+
+    await waitFor(() => expect(deleteDocument).toHaveBeenCalledWith('doc-1'), {
+      timeout: 10_000,
+    });
+    // The dialog closes and the affected queries refetch: documents list,
+    // confirmed-data panel, and the calculation (its stale flag may have
+    // flipped server-side).
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await waitFor(() => {
+      expect(vi.mocked(listDocuments).mock.calls.length).toBeGreaterThan(
+        documentsFetches,
+      );
+      expect(vi.mocked(getConfirmedData).mock.calls.length).toBeGreaterThan(
+        confirmedDataFetches,
+      );
+      expect(vi.mocked(getCalculation).mock.calls.length).toBeGreaterThan(
+        calculationFetches,
+      );
+    });
+  });
+
+  it('does not delete the document when the dialog is cancelled', async () => {
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    const list = await screen.findByRole('list');
+    await user.click(
+      within(list).getByRole('button', { name: 'מחיקת המסמך tofes106.pdf' }),
+    );
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'ביטול' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('shows the server Hebrew error verbatim inside the open dialog when the document delete fails', async () => {
+    // The API's 409 for a filed year — the message must render verbatim.
+    vi.mocked(deleteDocument).mockRejectedValue(
+      new ApiError(
+        409,
+        'לא ניתן למחוק מסמך משנת מס שהוגשה — מסמכי המקור של דוח שהוגש חייבים להישמר',
+      ),
+    );
+    const user = userEvent.setup();
+    await renderApp('/tax-years/ty-2024');
+
+    const list = await screen.findByRole('list');
+    await user.click(
+      within(list).getByRole('button', { name: 'מחיקת המסמך tofes106.pdf' }),
+    );
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'מחיקה' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveProperty(
+      'textContent',
+      'לא ניתן למחוק מסמך משנת מס שהוגשה — מסמכי המקור של דוח שהוגש חייבים להישמר',
+    );
   });
 });

@@ -75,4 +75,61 @@ describe('computeIncomeTax', () => {
       expect(amountSum).toBe(sh * 100);
     }
   });
+
+  // 2026 official table — brackets 3-4 widened by חוק ההתייעלות הכלכלית
+  // תשפ"ו-2026 (booklet-2026 פרק ב; research report 2026-07-17 §1.1).
+  describe('2026 widened brackets 3-4', () => {
+    const y2026 = getIlYearData(2026);
+
+    it('200,000 ₪ stays inside the widened 20% bracket (29,392 ₪ in 3 rows)', () => {
+      // 2025 charged 30,074 ₪ across 4 rows for the same income.
+      const res = computeIncomeTax(agorot(20_000_000), y2026);
+      expect(res.totalAgorot).toBe(2_939_200);
+      expect(res.rows).toHaveLength(3);
+      expect(res.rows[2]).toEqual({
+        fromAgorot: 12_072_000,
+        toAgorot: 22_800_000,
+        rateBp: 2_000,
+        taxedAmountAgorot: 7_928_000,
+        taxAgorot: 1_585_600,
+      });
+    });
+
+    it('250,000 ₪ costs 3,762 ₪ less in 2026 than in 2025', () => {
+      // 2026: 8,412 + 5,124 + 107,280×20% + 22,000×31% = 41,812 ₪
+      // 2025: 8,412 + 5,124 + 73,080×20% + 56,200×31% = 45,574 ₪
+      const in2026 = computeIncomeTax(agorot(25_000_000), y2026);
+      const in2025 = computeIncomeTax(agorot(25_000_000), y2025);
+      expect(in2026.totalAgorot).toBe(4_181_200);
+      expect(in2025.totalAgorot).toBe(4_557_400);
+      expect(in2025.totalAgorot - in2026.totalAgorot).toBe(376_200);
+    });
+
+    it('matches the boundary value at 301,200 ₪ (57,684 ₪)', () => {
+      const res = computeIncomeTax(agorot(30_120_000), y2026);
+      expect(res.totalAgorot).toBe(5_768_400);
+      expect(res.rows).toHaveLength(4);
+      expect(res.rows[3]).toEqual({
+        fromAgorot: 22_800_000,
+        toAgorot: 30_120_000,
+        rateBp: 3_100,
+        taxedAmountAgorot: 7_320_000,
+        taxAgorot: 2_269_200,
+      });
+    });
+
+    it('caps the widening benefit at 5,038.80 ₪ in the open 47% bracket (800,000 ₪)', () => {
+      // 2026: 261,030.40 ₪ vs the 2025 value 266,069.20 ₪ asserted above —
+      // saving (228,000−193,800)×(31%−20%) + (301,200−269,280)×(35%−31%).
+      const res = computeIncomeTax(agorot(80_000_000), y2026);
+      expect(res.totalAgorot).toBe(26_103_040);
+      expect(res.rows.at(-1)).toEqual({
+        fromAgorot: 56_028_000,
+        toAgorot: null,
+        rateBp: 4_700,
+        taxedAmountAgorot: 23_972_000,
+        taxAgorot: 11_266_840,
+      });
+    });
+  });
 });

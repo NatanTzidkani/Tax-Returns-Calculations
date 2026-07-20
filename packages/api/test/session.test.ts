@@ -10,13 +10,17 @@ afterEach(() => {
 });
 
 describe('registerSession / sessionKey', () => {
+  // Registering @fastify/secure-session does real libsodium/key setup (~13s
+  // here); only the two non-throwing cases reach it, and under full-suite CPU
+  // contention they can exceed the default timeout — give them headroom so the
+  // slow-but-correct path never flakes red.
   it('accepts a SESSION_SECRET of sufficient length outside NODE_ENV=test', async () => {
     process.env.NODE_ENV = 'development';
     process.env.SESSION_SECRET = 'a'.repeat(32);
     const app = Fastify();
     expect(() => registerSession(app)).not.toThrow();
     await app.close();
-  });
+  }, 60_000);
 
   it('rejects a SESSION_SECRET shorter than 32 characters', async () => {
     process.env.NODE_ENV = 'development';
@@ -48,7 +52,7 @@ describe('registerSession / sessionKey', () => {
     const app = Fastify();
     expect(() => registerSession(app)).not.toThrow();
     await app.close();
-  });
+  }, 60_000);
 
   it('derives the key as SHA-256 of the secret, never the raw secret bytes', () => {
     const secret = 'b'.repeat(40);

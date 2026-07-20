@@ -11,6 +11,13 @@ import {
   listDocuments,
   listTaxYears,
 } from '../api/client';
+import {
+  DRAFT_DEBOUNCE_MS,
+  draftStorageKey,
+  fingerprintPayload,
+  form106FormState,
+  type StoredReviewDraft,
+} from '../lib/review-draft';
 import { renderApp } from '../test/render';
 
 vi.mock('../api/client');
@@ -63,6 +70,7 @@ const charityPayload: CharityReceipt = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(getDocument).mockReset();
   vi.mocked(extractDocument).mockReset();
   vi.mocked(confirmDocument).mockReset();
@@ -506,5 +514,186 @@ describe('DocumentReview', () => {
 
     await user.click(screen.getByRole('button', { name: 'הקטנה' }));
     expect(image.style.width).toBe('100%');
+  });
+
+  // --- spec §9.3: review edits autosave as localStorage drafts -------------
+  describe('draft autosave (spec §9.3)', () => {
+    const draftKey = draftStorageKey('doc-1');
+
+    /** Seed a v1 draft record for doc-1 based on the form106 extraction. */
+    function seedDraft(overrides: Partial<StoredReviewDraft> = {}) {
+      const record: StoredReviewDraft = {
+        version: 1,
+        kind: 'form106',
+        baseFingerprint: fingerprintPayload(form106Payload),
+        form: { ...form106FormState(form106Payload), employerName: 'מעסיק טיוטה' },
+        savedAt: '2026-07-17T10:00:00.000Z',
+        ...overrides,
+      };
+      localStorage.setItem(draftKey, JSON.stringify(record));
+    }
+
+    it('autosaves edits to localStorage as a debounced draft with the base fingerprint', async () => {
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+
+      const user = userEvent.setup();
+      await renderApp(REVIEW_PATH);
+
+      const employerInput = await screen.findByLabelText('שם המעסיק');
+      await user.clear(employerInput);
+      await user.type(employerInput, 'מעסיק טיוטה');
+
+      await waitFor(
+        () => {
+          const raw = localStorage.getItem(draftKey);
+          expect(raw).toBeTruthy();
+          const parsed = JSON.parse(raw!) as StoredReviewDraft;
+          expect(parsed.version).toBe(1);
+          expect(parsed.kind).toBe('form106');
+          expect(parsed.baseFingerprint).toBe(fingerprintPayload(form106Payload));
+          expect((parsed.form as { employerName: string }).employerName).toBe(
+            'מעסיק טיוטה',
+          );
+        },
+        { timeout: 10_000 },
+      );
+      // Autosave is a draft, never a confirmation.
+      expect(confirmDocument).not.toHaveBeenCalled();
+    });
+
+    it('restores a differing draft with a Hebrew notice and discards back to the server values', async () => {
+      seedDraft();
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+
+      const user = userEvent.setup();
+      await renderApp(REVIEW_PATH);
+
+      const employerInput = (await screen.findByLabelText(
+        'שם המעסיק',
+      )) as HTMLInputElement;
+      expect(employerInput.value).toBe('מעסיק טיוטה');
+      expect(screen.getByText(/שוחזרה טיוטה/)).toBeTruthy();
+
+      await user.click(
+        screen.getByRole('button', { name: 'ביטול הטיוטה וחזרה לנתוני המקור' }),
+      );
+
+      expect((screen.getByLabelText('שם המעסיק') as HTMLInputElement).value).toBe(
+        'אקמה בע"מ',
+      );
+      expect(localStorage.getItem(draftKey)).toBeNull();
+      expect(screen.queryByText(/שוחזרה טיוטה/)).toBeNull();
+    });
+
+    it('shows no notice for a draft identical to the server values and removes it', async () => {
+      seedDraft({ form: form106FormState(form106Payload) });
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+
+      await renderApp(REVIEW_PATH);
+
+      const employerInput = (await screen.findByLabelText(
+        'שם המעסיק',
+      )) as HTMLInputElement;
+      expect(employerInput.value).toBe('אקמה בע"מ');
+      expect(screen.queryByText(/שוחזרה טיוטה/)).toBeNull();
+      await waitFor(() => expect(localStorage.getItem(draftKey)).toBeNull(), {
+        timeout: 10_000,
+      });
+    });
+
+    it('drops a draft saved against a different extraction payload, with a stale notice', async () => {
+      seedDraft({
+        baseFingerprint: fingerprintPayload({
+          ...form106Payload,
+          employerName: 'מעסיק ישן',
+        }),
+      });
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+
+      await renderApp(REVIEW_PATH);
+
+      // The fresh extraction wins — the stale draft never overwrites it.
+      const employerInput = (await screen.findByLabelText(
+        'שם המעסיק',
+      )) as HTMLInputElement;
+      expect(employerInput.value).toBe('אקמה בע"מ');
+      expect(screen.getByText(/טיוטה קודמת נמחקה/)).toBeTruthy();
+      expect(screen.queryByText(/שוחזרה טיוטה/)).toBeNull();
+      await waitFor(() => expect(localStorage.getItem(draftKey)).toBeNull(), {
+        timeout: 10_000,
+      });
+    });
+
+    it('clears the draft on successful confirm', async () => {
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+      vi.mocked(confirmDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'confirmed' }),
+      );
+
+      const user = userEvent.setup();
+      const { router } = await renderApp(REVIEW_PATH);
+
+      const employerInput = await screen.findByLabelText('שם המעסיק');
+      await user.clear(employerInput);
+      await user.type(employerInput, 'מעסיק חדש');
+
+      // Wait for the autosaved draft, then confirm — the draft must not
+      // survive the transactional confirm (or resurrect on navigation).
+      await waitFor(() => expect(localStorage.getItem(draftKey)).toBeTruthy(), {
+        timeout: 10_000,
+      });
+      await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+      await waitFor(() => expect(confirmDocument).toHaveBeenCalled(), {
+        timeout: 10_000,
+      });
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe('/tax-years/ty-2024'),
+      );
+      expect(localStorage.getItem(draftKey)).toBeNull();
+    });
+
+    it('a debounce pending at confirm-time cannot resurrect the draft after navigation', async () => {
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+      vi.mocked(confirmDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'confirmed' }),
+      );
+
+      const user = userEvent.setup();
+      const { router } = await renderApp(REVIEW_PATH);
+
+      const employerInput = await screen.findByLabelText('שם המעסיק');
+      // Type and confirm WITHOUT waiting for the 300ms debounce to flush, so
+      // a pending write is still armed when confirm fires. clearBeforeConfirm
+      // must cancel it (pendingRef → null) or the unmount flush on navigation
+      // would re-save the draft after it was cleared.
+      await user.clear(employerInput);
+      await user.type(employerInput, 'מעסיק חדש');
+      await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+      await waitFor(() => expect(confirmDocument).toHaveBeenCalled(), {
+        timeout: 10_000,
+      });
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe('/tax-years/ty-2024'),
+      );
+
+      // Wait well past the debounce window: if the pending timer survived the
+      // confirm, the unmount flush would have written the draft by now.
+      await new Promise((resolve) => setTimeout(resolve, 3 * DRAFT_DEBOUNCE_MS));
+      expect(localStorage.getItem(draftKey)).toBeNull();
+    });
   });
 });

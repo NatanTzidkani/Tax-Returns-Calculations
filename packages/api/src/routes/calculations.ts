@@ -246,7 +246,10 @@ export async function calculationRoutes(
     if (!latest) return reply.code(404).send({ message: MSG.noCalculation });
 
     // Stale when any confirmed_data row of the year's documents is newer
-    // than the snapshot (a document was re-confirmed after calculating).
+    // than the snapshot (a document was re-confirmed after calculating), OR
+    // when confirmed data was REMOVED after it (per-document deletion bumps
+    // data_revised_at — deleted rows can't be seen by the timestamp join,
+    // they only make the year look LESS recently confirmed).
     const [newerConfirmation] = await deps.db
       .select({ id: confirmedData.id })
       .from(confirmedData)
@@ -258,8 +261,10 @@ export async function calculationRoutes(
         ),
       )
       .limit(1);
+    const staleByDeletion =
+      taxYear.dataRevisedAt !== null && taxYear.dataRevisedAt > latest.createdAt;
 
-    return reply.send({ ...latest, stale: Boolean(newerConfirmation) });
+    return reply.send({ ...latest, stale: Boolean(newerConfirmation) || staleByDeletion });
   });
 
   app.patch('/tax-years/:id/status', async (req, reply) => {
