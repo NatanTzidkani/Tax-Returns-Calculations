@@ -292,6 +292,25 @@ describe('DocumentReview', () => {
     expect(confirmDocument).not.toHaveBeenCalled();
   });
 
+  it('rejects a negative amount client-side — box amounts are non-negative agorot', async () => {
+    vi.mocked(getDocument).mockResolvedValue(
+      makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+    );
+
+    const user = userEvent.setup();
+    await renderApp(REVIEW_PATH);
+
+    const amountInputs = (await screen.findAllByLabelText(
+      'סכום (בש"ח)',
+    )) as HTMLInputElement[];
+    await user.clear(amountInputs[0]!);
+    await user.type(amountInputs[0]!, '-100');
+    await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+    expect(await screen.findByText(/הנתונים שהוזנו אינם תקינים/)).toBeTruthy();
+    expect(confirmDocument).not.toHaveBeenCalled();
+  });
+
   it('rejects an absurdly large amount gracefully instead of throwing on agorot overflow', async () => {
     vi.mocked(getDocument).mockResolvedValue(
       makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),

@@ -41,6 +41,26 @@ function sessionKey(): Buffer {
   );
 }
 
+/**
+ * Session-cookie `Secure` flag, driven by an EXPLICIT env var — never by
+ * NODE_ENV. Nothing in this repo's compose/deploy path sets
+ * NODE_ENV=production (see DEV_FALLBACK_SESSION_SECRET above), so a
+ * `NODE_ENV === 'production'` check here was dead code that silently shipped
+ * secure:false everywhere.
+ *
+ * Set COOKIE_SECURE=true when (and only when) the site is reached over
+ * https://. TRAP — HTTPS-terminating reverse proxy: the flag is enforced by
+ * the BROWSER against the page origin, not by this server's own socket, so
+ * COOKIE_SECURE=true is correct behind a TLS proxy even though the app itself
+ * speaks plain HTTP. But if you enable it while the site is still browsed
+ * over plain http://, the browser silently drops the session cookie and every
+ * sign-in "succeeds" yet never sticks.
+ */
+function cookieSecure(): boolean {
+  const raw = (process.env.COOKIE_SECURE ?? '').trim().toLowerCase();
+  return raw !== '' && raw !== 'false' && raw !== '0';
+}
+
 /** Mirrors how `multipart` is registered in app.ts: deferred, not awaited. */
 export function registerSession(app: FastifyInstance): void {
   app.register(secureSession, {
@@ -48,7 +68,7 @@ export function registerSession(app: FastifyInstance): void {
     cookie: {
       path: '/',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: cookieSecure(),
       sameSite: 'lax',
     },
   });

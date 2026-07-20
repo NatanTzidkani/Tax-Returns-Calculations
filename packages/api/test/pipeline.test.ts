@@ -329,6 +329,53 @@ describe('document upload', () => {
     expect(res.json().message).toMatch(/[֐-׿]/);
   });
 
+  it('sanitizes a path-traversal filename — upload succeeds, blob stays inside the year directory', async () => {
+    const evilFile = {
+      filename: 'a/../../evil.pdf',
+      contentType: 'application/pdf',
+      data: Buffer.from('%PDF-1.4 traversal attempt'),
+    };
+    const { payload, headers } = multipartBody({ kind: 'form106' }, evilFile);
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(201);
+    const row = res.json();
+    // The multipart parser already reduces the filename to a basename, so the
+    // directory components never reach us — the stored display name and the
+    // storage key are both the safe basename, INSIDE the year dir.
+    expect(row.originalFilename).toBe('evil.pdf');
+    expect(row.storageKey).toMatch(
+      new RegExp(`^${taxYearId}/[0-9a-f-]{36}-evil\\.pdf$`),
+    );
+    const stored = await storage.get(row.storageKey);
+    expect(stored.equals(evilFile.data)).toBe(true);
+  });
+
+  it('strips null bytes from the filename before composing the storage key', async () => {
+    const nulFile = {
+      filename: 'ev\u0000il.pdf',
+      contentType: 'application/pdf',
+      data: Buffer.from('%PDF-1.4 null byte'),
+    };
+    const { payload, headers } = multipartBody({ kind: 'form106' }, nulFile);
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(201);
+    const row = res.json();
+    expect(row.storageKey).toMatch(
+      new RegExp(`^${taxYearId}/[0-9a-f-]{36}-evil\\.pdf$`),
+    );
+    await expect(storage.get(row.storageKey)).resolves.toBeInstanceOf(Buffer);
+  });
+
   it('400s when no file part is sent', async () => {
     const { payload, headers } = multipartBody({ kind: 'form106' });
     const res = await authedInject({
@@ -493,6 +540,19 @@ describe('confirmation', () => {
       .from(schema.documents)
       .where(eq(schema.documents.id, doc.id));
     expect(row!.extractionStatus).toBe('pending');
+  });
+
+  it('rejects a negative box amount with 400 and a Hebrew message', async () => {
+    const doc = await uploadDocument(app, taxYearId, 'form106');
+    const res = await authedInject({
+      method: 'POST',
+      url: `/documents/${doc.id}/confirm`,
+      payload: {
+        payload: { ...confirmedForm106, boxes: { '158': -100 } },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
   });
 
   it("400s on confirm for kind 'other'", async () => {
@@ -672,6 +732,20 @@ describe('auth', () => {
       expect(res.statusCode).toBe(401);
       expect(res.json().message).toMatch(/[֐-׿]/);
     }
+  });
+
+  it('401s an unauthenticated POST BEFORE parsing its body — a large malformed JSON payload must not 400 first', async () => {
+    // The auth gate runs in onRequest, i.e. before Fastify's body parsing.
+    // If it ever moves back to preHandler, this malformed 1MB JSON body gets
+    // parsed pre-auth and the parser's 400 wins over the gate's 401.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tax-years',
+      headers: { 'content-type': 'application/json' },
+      payload: `{"junk":"${'x'.repeat(1024 * 1024)}`,
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().message).toMatch(/[֐-׿]/);
   });
 
   it('GET /health stays public — no auth required', async () => {
@@ -1200,6 +1274,28 @@ describe('cross-user isolation', () => {
       headers,
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('another user’s calculation rows never influence the refund estimates', async () => {
+    const before = await authedInject({ method: 'GET', url: '/tax-years' });
+    expect(before.statusCode).toBe(200);
+
+    // A calculation for the INTRUDER's year with an unmistakable refund. The
+    // refund-estimate query is user-scoped (joined to the requester's years),
+    // so the owner's listing must be byte-identical before and after.
+    await db.insert(schema.calculations).values({
+      taxYearId: intruderYearId,
+      engineVersion: ENGINE_VERSION,
+      input: {},
+      result: { refundAgorot: 999_999_999 },
+    });
+
+    const after = await authedInject({ method: 'GET', url: '/tax-years' });
+    expect(after.statusCode).toBe(200);
+    expect(after.json()).toEqual(before.json());
+    for (const year of after.json()) {
+      expect(year.refundEstimateAgorot).not.toBe(999_999_999);
+    }
   });
 
   it('leaves the other user’s year fully intact after the blocked attempts', async () => {

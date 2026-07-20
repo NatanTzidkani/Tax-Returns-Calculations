@@ -123,12 +123,20 @@ export function buildApp(deps: AppDeps = {}): FastifyInstance {
   // healthchecks) and POST /auth/google (sign-in itself, pre-session by
   // definition). A single root-level hook is simpler and harder to
   // accidentally bypass than opting every route-group plugin in individually.
-  app.addHook('preHandler', async (req, reply) => {
-    const key = `${req.method} ${req.url.split('?')[0]}`;
-    if (PUBLIC_ROUTES.has(key)) return;
-    if (!req.session.get('userId')) {
-      reply.code(401).send({ message: AUTH_REQUIRED_MESSAGE });
-    }
+  // `onRequest`, not `preHandler`: the gate only reads the session cookie, so
+  // it must run BEFORE body parsing — unauthenticated payloads are rejected
+  // without ever being parsed (see the large-malformed-JSON pipeline test).
+  // Registered inside `after()` so it lands AFTER secure-session's own
+  // onRequest cookie-decode hook (plugin hooks attach at boot time; a bare
+  // addHook here would run first in the phase and see an empty session).
+  app.after(() => {
+    app.addHook('onRequest', async (req, reply) => {
+      const key = `${req.method} ${req.url.split('?')[0]}`;
+      if (PUBLIC_ROUTES.has(key)) return;
+      if (!req.session.get('userId')) {
+        reply.code(401).send({ message: AUTH_REQUIRED_MESSAGE });
+      }
+    });
   });
 
   app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });

@@ -43,6 +43,12 @@ describe('Form106Schema', () => {
     ).toThrow();
   });
 
+  it('rejects negative box values (amounts are non-negative, like form867/charity)', () => {
+    expect(() =>
+      Form106Schema.parse({ ...valid, boxes: { '158': -1 } }),
+    ).toThrow();
+  });
+
   it('round-trips through JSON', () => {
     const parsed = Form106Schema.parse(valid);
     expect(Form106Schema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
