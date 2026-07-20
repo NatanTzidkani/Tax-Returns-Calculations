@@ -12,6 +12,7 @@ import {
   listTaxYears,
 } from '../api/client';
 import {
+  DRAFT_DEBOUNCE_MS,
   draftStorageKey,
   fingerprintPayload,
   form106FormState,
@@ -640,6 +641,39 @@ describe('DocumentReview', () => {
       await waitFor(() =>
         expect(router.state.location.pathname).toBe('/tax-years/ty-2024'),
       );
+      expect(localStorage.getItem(draftKey)).toBeNull();
+    });
+
+    it('a debounce pending at confirm-time cannot resurrect the draft after navigation', async () => {
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+      vi.mocked(confirmDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'confirmed' }),
+      );
+
+      const user = userEvent.setup();
+      const { router } = await renderApp(REVIEW_PATH);
+
+      const employerInput = await screen.findByLabelText('שם המעסיק');
+      // Type and confirm WITHOUT waiting for the 300ms debounce to flush, so
+      // a pending write is still armed when confirm fires. clearBeforeConfirm
+      // must cancel it (pendingRef → null) or the unmount flush on navigation
+      // would re-save the draft after it was cleared.
+      await user.clear(employerInput);
+      await user.type(employerInput, 'מעסיק חדש');
+      await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
+
+      await waitFor(() => expect(confirmDocument).toHaveBeenCalled(), {
+        timeout: 10_000,
+      });
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe('/tax-years/ty-2024'),
+      );
+
+      // Wait well past the debounce window: if the pending timer survived the
+      // confirm, the unmount flush would have written the draft by now.
+      await new Promise((resolve) => setTimeout(resolve, 3 * DRAFT_DEBOUNCE_MS));
       expect(localStorage.getItem(draftKey)).toBeNull();
     });
   });
