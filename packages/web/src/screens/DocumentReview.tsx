@@ -882,6 +882,9 @@ function DraftedKindForm({
   const navigate = useNavigate();
   const kind = doc.kind as ReviewableKind;
   const draft = useReviewDraft(doc.id, kind, initial, !readOnly);
+  // The stale notice is purely informational (the draft was already dropped
+  // from storage on mount), so dismissing it is a local UI concern.
+  const [staleDismissed, setStaleDismissed] = useState(false);
 
   const confirmMutation = useMutation({
     mutationFn: (payload: DocumentPayload) => confirmDocument(doc.id, payload),
@@ -921,10 +924,18 @@ function DraftedKindForm({
           </div>
         </div>
       ) : null}
-      {draft.notice === 'staleDropped' ? (
-        <p role="status" className={draftNoticeClasses}>
-          {t('documentReview.draftStaleDropped')}
-        </p>
+      {draft.notice === 'staleDropped' && !staleDismissed ? (
+        <div role="status" className={`${draftNoticeClasses} flex items-start gap-3`}>
+          <p className="grow">{t('documentReview.draftStaleDropped')}</p>
+          <button
+            type="button"
+            onClick={() => setStaleDismissed(true)}
+            aria-label={t('documentReview.draftDismiss')}
+            className="shrink-0 text-lg leading-none opacity-70 hover:opacity-100"
+          >
+            ×
+          </button>
+        </div>
       ) : null}
       {kind === 'form106' ? (
         <Form106Form
