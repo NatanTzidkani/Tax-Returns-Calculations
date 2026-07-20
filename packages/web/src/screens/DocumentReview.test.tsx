@@ -632,6 +632,26 @@ describe('DocumentReview', () => {
       });
     });
 
+    it('lets the user dismiss the stale-draft notice', async () => {
+      seedDraft({
+        baseFingerprint: fingerprintPayload({
+          ...form106Payload,
+          employerName: 'מעסיק ישן',
+        }),
+      });
+      vi.mocked(getDocument).mockResolvedValue(
+        makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
+      );
+
+      const user = userEvent.setup();
+      await renderApp(REVIEW_PATH);
+
+      await screen.findByLabelText('שם המעסיק');
+      expect(screen.getByText(/טיוטה קודמת נמחקה/)).toBeTruthy();
+      await user.click(screen.getByRole('button', { name: 'סגירת ההודעה' }));
+      expect(screen.queryByText(/טיוטה קודמת נמחקה/)).toBeNull();
+    });
+
     it('clears the draft on successful confirm', async () => {
       vi.mocked(getDocument).mockResolvedValue(
         makeDoc({ extractionStatus: 'extracted', extractedPayload: form106Payload }),
