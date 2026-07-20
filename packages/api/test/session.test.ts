@@ -57,3 +57,53 @@ describe('registerSession / sessionKey', () => {
     expect(Buffer.from(secret).length).not.toBe(32);
   });
 });
+
+describe('cookie Secure flag (COOKIE_SECURE)', () => {
+  /** Signs a session in a throwaway app and returns the Set-Cookie header. */
+  async function setCookieHeader(): Promise<string> {
+    const app = Fastify();
+    registerSession(app);
+    app.post('/login', async (req, reply) => {
+      req.session.set('userId', 'user-1');
+      return reply.send({ ok: true });
+    });
+    const res = await app.inject({ method: 'POST', url: '/login' });
+    await app.close();
+    return String(res.headers['set-cookie'] ?? '');
+  }
+
+  it('COOKIE_SECURE=true marks the session cookie Secure', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.COOKIE_SECURE = 'true';
+    expect(await setCookieHeader()).toMatch(/;\s*Secure/i);
+  });
+
+  it('COOKIE_SECURE=1 also counts as truthy', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.COOKIE_SECURE = '1';
+    expect(await setCookieHeader()).toMatch(/;\s*Secure/i);
+  });
+
+  it('unset COOKIE_SECURE leaves the cookie non-Secure (plain-HTTP local run)', async () => {
+    process.env.NODE_ENV = 'test';
+    delete process.env.COOKIE_SECURE;
+    expect(await setCookieHeader()).not.toMatch(/;\s*Secure/i);
+  });
+
+  it('COOKIE_SECURE=false and =0 stay non-Secure explicitly', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.COOKIE_SECURE = 'false';
+    expect(await setCookieHeader()).not.toMatch(/;\s*Secure/i);
+    process.env.COOKIE_SECURE = '0';
+    expect(await setCookieHeader()).not.toMatch(/;\s*Secure/i);
+  });
+
+  it('NODE_ENV=production alone never flips the flag — only COOKIE_SECURE does', async () => {
+    // The old `NODE_ENV === 'production'` check was dead code: nothing in the
+    // deploy path sets NODE_ENV. The flag must be explicit, not inferred.
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = 'c'.repeat(32);
+    delete process.env.COOKIE_SECURE;
+    expect(await setCookieHeader()).not.toMatch(/;\s*Secure/i);
+  });
+});

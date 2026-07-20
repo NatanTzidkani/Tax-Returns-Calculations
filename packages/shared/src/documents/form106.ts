@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const boxCode = z.string().regex(/^\d{3}$/, 'Form 106 box codes are 3 digits');
-const agorotAmount = z.number().int('amounts are integer agorot');
+const agorotAmount = z.number().int('amounts are integer agorot').min(0);
 
 /**
  * Form 106 (annual employer salary summary).

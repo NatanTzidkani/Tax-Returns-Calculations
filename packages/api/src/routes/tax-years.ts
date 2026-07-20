@@ -69,21 +69,27 @@ export async function taxYearRoutes(
   });
 
   app.get('/tax-years', async (req) => {
+    const userId = requireUserId(req);
     // Scoped to the requester — never leak another user's years (e.g. stray
     // rows from the pre-Google single-default-user era).
     const years = await deps.db
       .select()
       .from(taxYears)
-      .where(eq(taxYears.userId, requireUserId(req)))
+      .where(eq(taxYears.userId, userId))
       .orderBy(desc(taxYears.year));
 
     // Latest calculation per year → dashboard refund estimate (Plan 5).
+    // Joined to the requester's OWN years: without the scope this would pull
+    // every user's calculations into memory (the map lookup below would still
+    // filter the output, but the query must not fetch foreign rows at all).
     const latest = await deps.db
       .selectDistinctOn([calculations.taxYearId], {
         taxYearId: calculations.taxYearId,
         result: calculations.result,
       })
       .from(calculations)
+      .innerJoin(taxYears, eq(calculations.taxYearId, taxYears.id))
+      .where(eq(taxYears.userId, userId))
       .orderBy(calculations.taxYearId, desc(calculations.createdAt));
     const refundByYear = new Map(
       latest.map((row) => [

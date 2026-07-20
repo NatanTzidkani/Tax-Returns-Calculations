@@ -122,7 +122,12 @@ export async function documentRoutes(
     const kind = DOCUMENT_KINDS.find((k) => k === kindValue);
     if (!kind) return reply.code(400).send({ message: MSG.invalidKind });
 
-    const storageKey = `${taxYear.id}/${randomUUID()}-${file.filename}`;
+    // Never trust the client filename in a filesystem path: `basename` strips
+    // directory components (`a/../../evil.pdf` → `evil.pdf`) and null bytes
+    // are removed so they can't truncate/poison the path. The raw name lives
+    // only in the `originalFilename` column (display metadata).
+    const safeFilename = path.basename(file.filename).replaceAll('\0', '');
+    const storageKey = `${taxYear.id}/${randomUUID()}-${safeFilename}`;
     await deps.storage.put(storageKey, data);
 
     const [row] = await deps.db
