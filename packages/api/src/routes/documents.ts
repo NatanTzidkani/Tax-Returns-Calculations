@@ -131,11 +131,17 @@ export async function documentRoutes(
     const kind = DOCUMENT_KINDS.find((k) => k === kindValue);
     if (!kind) return reply.code(400).send({ message: MSG.invalidKind });
 
-    // Never trust the client filename in a filesystem path: `basename` strips
-    // directory components (`a/../../evil.pdf` → `evil.pdf`) and null bytes
-    // are removed so they can't truncate/poison the path. The raw name lives
-    // only in the `originalFilename` column (display metadata).
-    const safeFilename = path.basename(file.filename).replaceAll('\0', '');
+    // Never trust the client filename. Null bytes are stripped from BOTH the
+    // stored name and the storage key: they can truncate/poison a filesystem
+    // path, and Postgres `text` columns reject NUL outright (an un-stripped
+    // name would 500 the insert). `basename` additionally strips any directory
+    // components from the storage key (`a/../../evil.pdf` → `evil.pdf`) as
+    // defence in depth — the multipart parser already reduces filename to a
+    // basename, but the key must never contain a separator regardless. The
+    // full (null-stripped) name is kept in `originalFilename` as display
+    // metadata only.
+    const displayFilename = file.filename.replaceAll('\0', '');
+    const safeFilename = path.basename(displayFilename);
     const storageKey = `${taxYear.id}/${randomUUID()}-${safeFilename}`;
     await deps.storage.put(storageKey, data);
 
@@ -145,7 +151,7 @@ export async function documentRoutes(
         taxYearId: taxYear.id,
         kind,
         storageKey,
-        originalFilename: file.filename,
+        originalFilename: displayFilename,
       })
       .returning();
     return reply.code(201).send(row);

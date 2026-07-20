@@ -344,9 +344,10 @@ describe('document upload', () => {
     });
     expect(res.statusCode).toBe(201);
     const row = res.json();
-    // The raw client name survives only as display metadata…
-    expect(row.originalFilename).toBe('a/../../evil.pdf');
-    // …while the storage key uses the sanitized basename, INSIDE the year dir.
+    // The multipart parser already reduces the filename to a basename, so the
+    // directory components never reach us — the stored display name and the
+    // storage key are both the safe basename, INSIDE the year dir.
+    expect(row.originalFilename).toBe('evil.pdf');
     expect(row.storageKey).toMatch(
       new RegExp(`^${taxYearId}/[0-9a-f-]{36}-evil\\.pdf$`),
     );
