@@ -25,6 +25,34 @@ describe('Form867Schema', () => {
     expect(parsed.accountId).toBeUndefined();
   });
 
+  it('accepts the appendix-ד\' non-linked (15%) interest fields', () => {
+    const parsed = Form867Schema.parse({
+      ...valid,
+      nonLinkedInterestAgorot: 1_000_000,
+      nonLinkedInterestWithheldAgorot: 150_000,
+    });
+    expect(parsed.nonLinkedInterestAgorot).toBe(1_000_000);
+    expect(parsed.nonLinkedInterestWithheldAgorot).toBe(150_000);
+  });
+
+  it('defaults the non-linked interest fields to 0 for legacy payloads', () => {
+    const parsed = Form867Schema.parse(valid);
+    expect(parsed.nonLinkedInterestAgorot).toBe(0);
+    expect(parsed.nonLinkedInterestWithheldAgorot).toBe(0);
+  });
+
+  it('rejects negative non-linked interest', () => {
+    expect(() =>
+      Form867Schema.parse({ ...valid, nonLinkedInterestAgorot: -100 }),
+    ).toThrow();
+  });
+
+  it('rejects non-integer non-linked interest withholding', () => {
+    expect(() =>
+      Form867Schema.parse({ ...valid, nonLinkedInterestWithheldAgorot: 12.5 }),
+    ).toThrow();
+  });
+
   it('rejects negative amounts', () => {
     expect(() =>
       Form867Schema.parse({ ...valid, realLossesAgorot: -100 }),

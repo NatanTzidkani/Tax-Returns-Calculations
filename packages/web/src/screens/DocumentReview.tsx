@@ -511,6 +511,23 @@ function Form867Form({
       realLossesAgorot: shekelInputToAgorot(form.amounts.realLossesAgorot),
       interestDividendAgorot: shekelInputToAgorot(form.amounts.interestDividendAgorot),
       taxWithheldAgorot: shekelInputToAgorot(form.amounts.taxWithheldAgorot),
+      // Appendix ד' interest is optional: a securities-only 867 has no deposit
+      // line, so a BLANK field omits the key and lets the schema default it to
+      // 0 — rather than a NaN reject like the required fields above.
+      ...(form.amounts.nonLinkedInterestAgorot.trim() === ''
+        ? {}
+        : {
+            nonLinkedInterestAgorot: shekelInputToAgorot(
+              form.amounts.nonLinkedInterestAgorot,
+            ),
+          }),
+      ...(form.amounts.nonLinkedInterestWithheldAgorot.trim() === ''
+        ? {}
+        : {
+            nonLinkedInterestWithheldAgorot: shekelInputToAgorot(
+              form.amounts.nonLinkedInterestWithheldAgorot,
+            ),
+          }),
     };
     const parsed = Form867Schema.safeParse(candidate);
     if (!parsed.success) {

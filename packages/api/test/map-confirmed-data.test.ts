@@ -133,36 +133,73 @@ describe('mapConfirmedData', () => {
     });
   });
 
-  it('maps supplied non-linked-interest fields into the engine input', () => {
-    const { input } = mapConfirmedData({
-      year: 2025,
-      taxpayer,
-      documents: [],
-      lossCarryforwardInAgorot: 0,
-      nonLinkedInterestAgorot: 1_000_000,
-      nonLinkedInterestWithheldAgorot: 150_000,
-    });
+  it("maps a confirmed 867's appendix-ד' interest into the engine's nonLinkedInterest bucket", () => {
+    const { input } = map([
+      {
+        kind: 'form867',
+        payload: {
+          taxYear: 2025,
+          brokerName: 'בנק דיסקונט',
+          realGainsAgorot: 0,
+          realLossesAgorot: 0,
+          interestDividendAgorot: 0,
+          taxWithheldAgorot: 0,
+          nonLinkedInterestAgorot: 1_000_000,
+          nonLinkedInterestWithheldAgorot: 150_000,
+          uncertainFields: [],
+        },
+      },
+    ]);
     expect(input.nonLinkedInterest).toEqual({
       amountAgorot: 1_000_000,
       taxWithheldAgorot: 150_000,
     });
   });
 
-  it('defaults a missing non-linked-interest sub-field to 0 when the other is present', () => {
-    const { input } = mapConfirmedData({
-      year: 2025,
-      taxpayer,
-      documents: [],
-      lossCarryforwardInAgorot: 0,
-      nonLinkedInterestAgorot: 1_000_000,
+  it('SUMS non-linked interest across every confirmed 867 of the year into one bucket', () => {
+    const doc867 = (
+      nonLinkedInterestAgorot: number,
+      nonLinkedInterestWithheldAgorot: number,
+    ): ConfirmedDocumentInput => ({
+      kind: 'form867',
+      payload: {
+        taxYear: 2025,
+        brokerName: 'בנק',
+        realGainsAgorot: 0,
+        realLossesAgorot: 0,
+        interestDividendAgorot: 0,
+        taxWithheldAgorot: 0,
+        nonLinkedInterestAgorot,
+        nonLinkedInterestWithheldAgorot,
+        uncertainFields: [],
+      },
     });
+    const { input } = map([doc867(1_000_000, 150_000), doc867(400_000, 60_000)]);
     expect(input.nonLinkedInterest).toEqual({
-      amountAgorot: 1_000_000,
-      taxWithheldAgorot: 0,
+      amountAgorot: 1_400_000,
+      taxWithheldAgorot: 210_000,
     });
   });
 
-  it('omits nonLinkedInterest entirely when neither field is supplied (safe no-op)', () => {
+  it('omits nonLinkedInterest for a legacy 867 payload without the appendix-ד\' fields (defaults 0)', () => {
+    const { input } = map([
+      {
+        kind: 'form867',
+        payload: {
+          taxYear: 2025,
+          brokerName: 'בנק לאומי',
+          realGainsAgorot: 5_000_000,
+          realLossesAgorot: 0,
+          interestDividendAgorot: 250_000,
+          taxWithheldAgorot: 900_000,
+          uncertainFields: [],
+        },
+      },
+    ]);
+    expect(input.nonLinkedInterest).toBeUndefined();
+  });
+
+  it('omits nonLinkedInterest entirely when no 867 carries deposit interest (safe no-op)', () => {
     const { input } = map([]);
     expect(input.nonLinkedInterest).toBeUndefined();
   });

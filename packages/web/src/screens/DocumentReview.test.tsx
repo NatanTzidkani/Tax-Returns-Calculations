@@ -58,6 +58,8 @@ const form867Payload: Form867 = {
   realLossesAgorot: 0,
   interestDividendAgorot: 45_600,
   taxWithheldAgorot: 308_625,
+  nonLinkedInterestAgorot: 200_000,
+  nonLinkedInterestWithheldAgorot: 30_000,
   uncertainFields: ['taxWithheldAgorot'],
 };
 
@@ -418,6 +420,12 @@ describe('DocumentReview', () => {
     expect(gainsInput.value).toBe('12345');
     expect(gainsInput.dataset.uncertain).toBeUndefined();
 
+    // Appendix-ד' non-linked (15%) interest renders in shekels too.
+    const interestInput = screen.getByLabelText(
+      'ריבית מפקדונות ותוכניות חיסכון (נספח ד\', 15%) (בש"ח)',
+    ) as HTMLInputElement;
+    expect(interestInput.value).toBe('2000');
+
     await user.clear(gainsInput);
     await user.type(gainsInput, '20000.5');
     await user.click(screen.getByRole('button', { name: 'אישור הנתונים' }));
@@ -432,6 +440,8 @@ describe('DocumentReview', () => {
           realLossesAgorot: 0,
           interestDividendAgorot: 45_600,
           taxWithheldAgorot: 308_625,
+          nonLinkedInterestAgorot: 200_000,
+          nonLinkedInterestWithheldAgorot: 30_000,
           uncertainFields: [],
         }),
       { timeout: 10_000 },

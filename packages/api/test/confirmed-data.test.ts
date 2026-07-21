@@ -247,4 +247,59 @@ describe('GET /tax-years/:id/confirmed-data', () => {
     // Document-derived fields ONLY — no taxpayer, no year echo.
     expect('taxpayer' in body).toBe(false);
   });
+
+  it("surfaces & SUMS 867 appendix-ד' non-linked interest under nonLinkedInterest", async () => {
+    // A fresh year isolates this from the docs the previous test inserted.
+    const created = await authedInject({
+      method: 'POST',
+      url: '/tax-years',
+      payload: { year: 2024 },
+    });
+    expect(created.statusCode).toBe(201);
+    const year2024Id: string = created.json().id;
+
+    const insert867 = async (
+      brokerName: string,
+      nonLinkedInterestAgorot: number,
+      nonLinkedInterestWithheldAgorot: number,
+    ) => {
+      const [doc] = await db
+        .insert(schema.documents)
+        .values({
+          taxYearId: year2024Id,
+          kind: 'form867',
+          storageKey: `test/867-${brokerName}`,
+          originalFilename: '867.pdf',
+          extractionStatus: 'confirmed',
+        })
+        .returning();
+      await db.insert(schema.confirmedData).values({
+        documentId: doc!.id,
+        payload: {
+          taxYear: 2024,
+          brokerName,
+          realGainsAgorot: 0,
+          realLossesAgorot: 0,
+          interestDividendAgorot: 0,
+          taxWithheldAgorot: 0,
+          nonLinkedInterestAgorot,
+          nonLinkedInterestWithheldAgorot,
+          uncertainFields: [],
+        },
+        confirmedAt: new Date('2026-07-01T10:00:00Z'),
+      });
+    };
+    await insert867('בנק א', 1_000_000, 150_000);
+    await insert867('בנק ב', 400_000, 60_000);
+
+    const res = await authedInject({
+      method: 'GET',
+      url: `/tax-years/${year2024Id}/confirmed-data`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().nonLinkedInterest).toEqual({
+      amountAgorot: 1_400_000,
+      taxWithheldAgorot: 210_000,
+    });
+  });
 });

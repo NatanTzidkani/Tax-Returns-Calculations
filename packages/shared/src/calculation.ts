@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Integer agorot (₪ × 100), non-negative — matches the document schemas. */
-const agorotAmount = z.number().int('amounts are integer agorot').min(0);
-
 /** Integer calendar/tax year. Purely structural — legal year rules (e.g. the
  *  degree cohort boundaries) belong to the engine. Bounds are absurdity guards
  *  only (a mistyped 20240 or negative year is a loud reject, not a legal rule). */
@@ -104,13 +101,11 @@ export type DegreeInput = z.infer<typeof DegreeInputSchema>;
  * absent as keys — the engine distinguishes `undefined` (not supplied) from
  * `[]`, and children-without-parentContext is the ENGINE's loud throw.
  *
- * nonLinkedInterestAgorot / nonLinkedInterestWithheldAgorot are ALSO
- * per-request: 15% interest on a non-index-linked bank deposit or savings
- * plan (§125ג(ג)(1); Form 1301 field 078, withholding 043). There is no
- * confirmed-document source for it yet — Form 867 extraction only carries the
- * securities interest/dividend aggregate — so the reviewer enters it here
- * until a dedicated non-linked-interest extraction box exists. Both optional;
- * absent → no such income.
+ * 15% non-linked deposit/savings interest (§125ג(ג)(1); Form 1301 field 078,
+ * withholding 043) is NO LONGER per-request: it is real confirmed data on
+ * Form 867 appendix ד' (Form867Schema.nonLinkedInterestAgorot /
+ * nonLinkedInterestWithheldAgorot), summed across the year's 867 docs by
+ * mapConfirmedData — see docs/superpowers/research/2026-07-20-non-linked-interest-source.md.
  */
 export const CalculateRequestSchema = z
   .object({
@@ -125,10 +120,6 @@ export const CalculateRequestSchema = z
         degrees: z.array(DegreeInputSchema).optional(),
       })
       .strict(),
-    /** 15% deposit/savings interest income (Form 1301 field 078). */
-    nonLinkedInterestAgorot: agorotAmount.optional(),
-    /** Deposit-interest tax withheld at source (Form 1301 field 043). */
-    nonLinkedInterestWithheldAgorot: agorotAmount.optional(),
   })
   .strict();
 

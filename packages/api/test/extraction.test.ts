@@ -84,12 +84,16 @@ describe('extractDocument', () => {
       realLossesAgorot: 0,
       interestDividendAgorot: 0,
       taxWithheldAgorot: 25,
+      nonLinkedInterestAgorot: 300,
+      nonLinkedInterestWithheldAgorot: 45,
       uncertainFields: [],
     };
     const client = fakeClient({ parsed_output: wire });
     const result = await extractDocument(client, { kind: 'form867', ...pdf });
     expect(result.payload).not.toHaveProperty('accountId');
     expect((result.payload as any).realGainsAgorot).toBe(100);
+    expect((result.payload as any).nonLinkedInterestAgorot).toBe(300);
+    expect((result.payload as any).nonLinkedInterestWithheldAgorot).toBe(45);
   });
 
   it('sends images as image blocks', async () => {

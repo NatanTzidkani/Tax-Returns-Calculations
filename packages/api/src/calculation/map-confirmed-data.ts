@@ -48,24 +48,17 @@ export function mapConfirmedData(opts: {
   documents: ConfirmedDocumentInput[];
   /** Sum of open loss_carryforward rows from earlier years, integer agorot. */
   lossCarryforwardInAgorot: number;
-  /**
-   * 15% non-linked deposit/savings interest (Form 1301 field 078) and its
-   * withholding (field 043). Both integer agorot.
-   *
-   * TODO(non-linked-interest source): there is NO confirmed-document source
-   * for this yet — Form 867 extraction only carries the securities
-   * interest/dividend aggregate, not the separate 15% non-linked-interest
-   * line/withholding. Until a dedicated extraction box exists these come
-   * per-request from the reviewer (CalculateRequestSchema); absent → the
-   * engine sees no such income (safe 0/no-op).
-   */
-  nonLinkedInterestAgorot?: number;
-  nonLinkedInterestWithheldAgorot?: number;
 }): MappedConfirmedData {
   const salaries: SalaryInput[] = [];
   const donations: DonationInput[] = [];
   const entries: BrokerEntryInput[] = [];
   let excludedDonations = 0;
+  // 15% non-linked deposit/savings interest (Form 867 appendix ד' → Form 1301
+  // field 078) and its withholding (field 043), SUMMED across every confirmed
+  // 867 of the year — the engine's nonLinkedInterest is one aggregate bucket,
+  // not per-broker. Both integer agorot.
+  let nonLinkedInterestAgorot = 0;
+  let nonLinkedInterestWithheldAgorot = 0;
 
   for (const doc of opts.documents) {
     switch (doc.kind) {
@@ -91,6 +84,8 @@ export function mapConfirmedData(opts: {
           interestDividendAgorot: agorot(form.interestDividendAgorot),
           taxWithheldAgorot: agorot(form.taxWithheldAgorot),
         });
+        nonLinkedInterestAgorot += form.nonLinkedInterestAgorot;
+        nonLinkedInterestWithheldAgorot += form.nonLinkedInterestWithheldAgorot;
         break;
       }
       case 'charity_receipt': {
@@ -111,16 +106,16 @@ export function mapConfirmedData(opts: {
     }
   }
 
-  // Only attach the bucket when the reviewer actually supplied a value;
-  // otherwise leave it undefined so the engine sees no such income.
+  // Attach the bucket only when a confirmed 867 actually carried non-linked
+  // interest (sum > 0); a year with none still sends `undefined` so the engine
+  // sees no such income — preserving prior behaviour. (Withholding without
+  // income can't happen without a positive amount on the same certificate; the
+  // amount>0 guard is the source-of-truth.)
   let nonLinkedInterest: NonLinkedInterestInput | undefined;
-  if (
-    opts.nonLinkedInterestAgorot !== undefined ||
-    opts.nonLinkedInterestWithheldAgorot !== undefined
-  ) {
+  if (nonLinkedInterestAgorot > 0 || nonLinkedInterestWithheldAgorot > 0) {
     nonLinkedInterest = {
-      amountAgorot: agorot(opts.nonLinkedInterestAgorot ?? 0),
-      taxWithheldAgorot: agorot(opts.nonLinkedInterestWithheldAgorot ?? 0),
+      amountAgorot: agorot(nonLinkedInterestAgorot),
+      taxWithheldAgorot: agorot(nonLinkedInterestWithheldAgorot),
     };
   }
 

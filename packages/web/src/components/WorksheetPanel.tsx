@@ -5,7 +5,6 @@ import {
   CalculateRequestSchema,
   formatILS,
   type ParentContext,
-  shekelsToAgorot,
   TaxpayerProfileSchema,
 } from '@taxreturns/shared';
 import type { BracketRow, TaxReturnResult } from '@taxreturns/tax-engine';
@@ -98,24 +97,6 @@ function formatRateBp(rateBp: number): string {
 }
 
 /**
- * A blank ₪ entry → `undefined` (omit from the body: absent = 0, unchanged
- * behavior). Otherwise convert shekels to integer agorot via the shared money
- * helper (never hand-rolled float math); garbage/overflow becomes NaN so the
- * shared Zod schema rejects it instead of silently defaulting to 0.
- */
-function optionalShekelsToAgorot(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (trimmed === '') return undefined;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) return Number.NaN;
-  try {
-    return shekelsToAgorot(parsed);
-  } catch {
-    return Number.NaN;
-  }
-}
-
-/**
  * A required integer entry → number for the shared Zod gate. Blank becomes
  * NaN (never a silent 0 — `Number('') === 0`) so `z.number().int()` rejects
  * it and the form shows the localized section message instead of submitting.
@@ -144,11 +125,10 @@ const PARENT_REGIMES: readonly ParentRegime[] = [
 const CHILD_AGES = Array.from({ length: 19 }, (_, age) => age);
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
 
-type InvalidSection = 'points' | 'interest' | 'children' | 'aliyah' | 'degrees';
+type InvalidSection = 'points' | 'children' | 'aliyah' | 'degrees';
 
 const invalidMessageKeys: Record<InvalidSection, string> = {
   points: 'worksheet.invalidPoints',
-  interest: 'worksheet.invalidInterest',
   children: 'worksheet.invalidChildren',
   aliyah: 'worksheet.invalidAliyah',
   degrees: 'worksheet.invalidDegrees',
@@ -243,8 +223,6 @@ function TaxpayerForm({
   const init = mountPrefill?.state;
   const [gender, setGender] = useState<'male' | 'female'>(init?.gender ?? 'male');
   const [additionalPoints, setAdditionalPoints] = useState('');
-  const [interest, setInterest] = useState('');
-  const [interestWithheld, setInterestWithheld] = useState('');
   const [children, setChildren] = useState<ChildRow[]>(init?.children ?? []);
   // Filer-level parent-allocation context ('' = not declared → parentContext
   // omitted from the body; children may still submit — the engine's loud
@@ -313,9 +291,6 @@ function TaxpayerForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nonLinkedInterestAgorot = optionalShekelsToAgorot(interest);
-    const nonLinkedInterestWithheldAgorot =
-      optionalShekelsToAgorot(interestWithheld);
     const body: CalculateRequestBody = {
       taxpayer: {
         gender,
@@ -397,11 +372,6 @@ function TaxpayerForm({
             }
           : {}),
       },
-      // Blank → omit so absent means 0 (unchanged behavior).
-      ...(nonLinkedInterestAgorot !== undefined ? { nonLinkedInterestAgorot } : {}),
-      ...(nonLinkedInterestWithheldAgorot !== undefined
-        ? { nonLinkedInterestWithheldAgorot }
-        : {}),
     };
     // The shared schema is the single source of truth for validity. On a
     // shape failure, point the Hebrew message at the offending section.
@@ -426,10 +396,6 @@ function TaxpayerForm({
         }
         if (head === 'taxpayer' && second === 'degrees') {
           section = 'degrees';
-          break;
-        }
-        if (String(head ?? '').startsWith('nonLinkedInterest')) {
-          section = 'interest';
           break;
         }
       }
@@ -489,45 +455,8 @@ function TaxpayerForm({
             className={`${fieldClasses} w-28`}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label.Root
-            htmlFor="worksheet-interest-input"
-            className={labelClasses}
-          >
-            {t('worksheet.nonLinkedInterestInputLabel')}
-          </Label.Root>
-          <input
-            id="worksheet-interest-input"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            value={interest}
-            onChange={(event) => setInterest(event.target.value)}
-            className={`${fieldClasses} w-36`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label.Root
-            htmlFor="worksheet-interest-withheld-input"
-            className={labelClasses}
-          >
-            {t('worksheet.nonLinkedInterestWithheldInputLabel')}
-          </Label.Root>
-          <input
-            id="worksheet-interest-withheld-input"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            value={interestWithheld}
-            onChange={(event) => setInterestWithheld(event.target.value)}
-            className={`${fieldClasses} w-36`}
-          />
-        </div>
       </div>
       <p className={mutedTextClasses}>{t('worksheet.additionalPointsHelp')}</p>
-      <p className={mutedTextClasses}>{t('worksheet.nonLinkedInterestInputHelp')}</p>
 
       {/* Children (§40/§66(ג)): filer-level regime + flags, then dynamic
           per-child rows. The picker offers ALL six regimes — the engine owns

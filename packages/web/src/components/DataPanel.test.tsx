@@ -100,6 +100,26 @@ describe('DataPanel — confirmed values grouped (spec §6 screen 2)', () => {
     expect(vi.mocked(getConfirmedData)).toHaveBeenCalledWith('ty-2024');
   });
 
+  it("renders the 867 appendix-ד' non-linked interest rows under שוק ההון", async () => {
+    vi.mocked(getConfirmedData).mockResolvedValue({
+      ...emptySummary,
+      nonLinkedInterest: {
+        amountAgorot: a(1_400_000),
+        taxWithheldAgorot: a(210_000),
+      },
+    });
+    await renderApp('/tax-years/ty-2024');
+
+    expect(
+      await screen.findByText((c) => normalize(c).includes('הכנסת ריבית (שדה 078)')),
+    ).toBeTruthy();
+    expect(
+      screen.getByText((c) => normalize(c).includes('מס שנוכה במקור מריבית פקדונות (שדה 043)')),
+    ).toBeTruthy();
+    expect(screen.getByText((c) => normalize(c) === ils(1_400_000))).toBeTruthy();
+    expect(screen.getByText((c) => normalize(c) === ils(210_000))).toBeTruthy();
+  });
+
   it('an empty year keeps the placeholder sentence and hides all groups', async () => {
     vi.mocked(getConfirmedData).mockResolvedValue(emptySummary);
     await renderApp('/tax-years/ty-2024');
