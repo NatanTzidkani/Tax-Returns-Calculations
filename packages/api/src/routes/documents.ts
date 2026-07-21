@@ -24,6 +24,8 @@ const MSG = {
   extractOther: 'לא ניתן להפעיל חילוץ על מסמך מסוג "אחר" — אין לו סכימת נתונים',
   confirmOther: 'לא ניתן לאשר נתונים למסמך מסוג "אחר" — אין לו סכימת נתונים',
   missingPayload: 'חסר שדה payload בגוף הבקשה',
+  disallowedType:
+    'סוג קובץ לא נתמך — יש להעלות PDF או תמונה (png, jpg, jpeg, webp, gif)',
   deleteFiledYear:
     'לא ניתן למחוק מסמך משנת מס שהוגשה — מסמכי המקור של דוח שהוגש חייבים להישמר',
 } as const;
@@ -40,6 +42,30 @@ const MEDIA_TYPES: Record<string, string> = {
 
 function mediaTypeFor(filename: string): string {
   return MEDIA_TYPES[path.extname(filename).toLowerCase()] ?? 'application/octet-stream';
+}
+
+/**
+ * Upload-time content-type allowlist (defence in depth). The read-side serves
+ * files with a `MEDIA_TYPES`-derived type + `nosniff`, so anything outside that
+ * map would be served as `application/octet-stream` anyway — we reject it up
+ * front instead of storing bytes we'll never usefully serve or extract. The
+ * allowlist is keyed off the SAME `MEDIA_TYPES` map (single source of truth):
+ * the filename extension AND, when the client sent one, the declared MIME type
+ * must both be recognised.
+ */
+const ALLOWED_MEDIA_TYPES = new Set(Object.values(MEDIA_TYPES));
+
+function isAllowedUpload(filename: string, declaredMimeType: string | undefined): boolean {
+  const ext = path.extname(filename).toLowerCase();
+  if (!(ext in MEDIA_TYPES)) return false;
+  // A declared MIME type, if present, must be one of the allowlisted media
+  // types too — an allowlisted extension can't launder a bogus content type.
+  // Absent/empty (`application/octet-stream` browsers sometimes send) falls
+  // back to the extension check above.
+  if (declaredMimeType && declaredMimeType !== 'application/octet-stream') {
+    return ALLOWED_MEDIA_TYPES.has(declaredMimeType.toLowerCase());
+  }
+  return true;
 }
 
 function isExtractable(kind: DocumentKind): kind is ExtractableDocumentKind {
@@ -141,6 +167,14 @@ export async function documentRoutes(
     // full (null-stripped) name is kept in `originalFilename` as display
     // metadata only.
     const displayFilename = file.filename.replaceAll('\0', '');
+
+    // Content-type allowlist (defence in depth). Reject disallowed uploads
+    // BEFORE any blob is written or row inserted — the stream is already fully
+    // consumed above, so nothing is left dangling.
+    if (!isAllowedUpload(displayFilename, file.mimetype)) {
+      return reply.code(400).send({ message: MSG.disallowedType });
+    }
+
     const safeFilename = path.basename(displayFilename);
     const storageKey = `${taxYear.id}/${randomUUID()}-${safeFilename}`;
     await deps.storage.put(storageKey, data);
