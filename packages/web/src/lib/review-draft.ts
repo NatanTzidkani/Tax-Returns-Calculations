@@ -30,6 +30,10 @@ export const FORM867_MONEY_FIELDS = [
   'realLossesAgorot',
   'interestDividendAgorot',
   'taxWithheldAgorot',
+  // Appendix 867-ד': non-linked (15%) deposit/savings interest → Form 1301
+  // field 078, and its withholding → field 043.
+  'nonLinkedInterestAgorot',
+  'nonLinkedInterestWithheldAgorot',
 ] as const;
 
 export type Form867MoneyField = (typeof FORM867_MONEY_FIELDS)[number];
@@ -98,6 +102,10 @@ export function form867FormState(payload: Form867 | null): Form867FormState {
       realLossesAgorot: agorotToShekelString(payload?.realLossesAgorot),
       interestDividendAgorot: agorotToShekelString(payload?.interestDividendAgorot),
       taxWithheldAgorot: agorotToShekelString(payload?.taxWithheldAgorot),
+      nonLinkedInterestAgorot: agorotToShekelString(payload?.nonLinkedInterestAgorot),
+      nonLinkedInterestWithheldAgorot: agorotToShekelString(
+        payload?.nonLinkedInterestWithheldAgorot,
+      ),
     },
   };
 }

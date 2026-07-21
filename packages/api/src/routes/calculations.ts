@@ -136,10 +136,6 @@ export async function calculationRoutes(
       taxpayer: parsed.data.taxpayer,
       documents: confirmed,
       lossCarryforwardInAgorot,
-      // 15% non-linked deposit interest — per-request until an extraction
-      // source exists (see mapConfirmedData TODO).
-      nonLinkedInterestAgorot: parsed.data.nonLinkedInterestAgorot,
-      nonLinkedInterestWithheldAgorot: parsed.data.nonLinkedInterestWithheldAgorot,
     });
 
     let result: TaxReturnResult;
@@ -230,6 +226,9 @@ export async function calculationRoutes(
       donations: input.donations,
       excludedDonations,
       capital: input.capital,
+      // 15% non-linked deposit interest summed from the year's 867-ד' appendices
+      // (Form 1301 field 078 / withholding 043); absent when no 867 carried it.
+      nonLinkedInterest: input.nonLinkedInterest,
     };
   });
 

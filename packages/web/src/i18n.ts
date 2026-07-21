@@ -60,6 +60,9 @@ export const resources = {
         realLosses: 'הפסדים ריאליים',
         interestDividend: 'ריבית ודיבידנד',
         capitalWithheld: 'מס שנוכה במקור (תיבה 040)',
+        nonLinkedInterestTitle: 'ריבית מפקדונות ותוכניות חיסכון (נספח ד\', 15%)',
+        nonLinkedInterestAmount: 'הכנסת ריבית (שדה 078)',
+        nonLinkedInterestWithheld: 'מס שנוכה במקור מריבית פקדונות (שדה 043)',
         carryIn: 'הפסד הון מועבר משנים קודמות',
       },
       taxYearDetail: {
@@ -126,6 +129,8 @@ export const resources = {
           realLossesAgorot: 'הפסד הון ריאלי (בש"ח)',
           interestDividendAgorot: 'ריבית ודיבידנד מניירות ערך (בש"ח)',
           taxWithheldAgorot: 'מס שנוכה בשוק ההון (בש"ח)',
+          nonLinkedInterestAgorot: 'ריבית מפקדונות ותוכניות חיסכון (נספח ד\', 15%) (בש"ח)',
+          nonLinkedInterestWithheldAgorot: 'ניכוי מס במקור מריבית פקדונות (בש"ח)',
           institutionName: 'שם המוסד',
           institutionRegistrationId: 'מספר עמותה',
           receiptNumber: 'מספר קבלה',
@@ -238,13 +243,6 @@ export const resources = {
         removeDegree: 'הסרת תואר',
         invalidDegrees:
           'פרטי התארים אינם תקינים — יש לבדוק שנת סיום, שנות לימוד, שנת זיכוי ושנות התמחות.',
-        nonLinkedInterestInputLabel:
-          'הכנסת ריבית על נכס שאינו צמוד מדד (15%) (₪)',
-        nonLinkedInterestWithheldInputLabel: 'ניכוי במקור על הריבית (₪)',
-        nonLinkedInterestInputHelp:
-          'ריבית על פיקדון או תוכנית חיסכון שאינם צמודי מדד (סעיף 125ג, שדה 078; ניכוי במקור שדה 043) — מזינים בשקלים.',
-        invalidInterest:
-          'הכנסת הריבית והניכוי במקור חייבים להיות סכומים לא שליליים בשקלים',
         calculateError: 'החישוב נכשל',
         refund: 'החזר מס',
         owed: 'יתרה לתשלום',

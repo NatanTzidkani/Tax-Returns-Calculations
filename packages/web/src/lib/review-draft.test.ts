@@ -31,6 +31,8 @@ const form867Payload: Form867 = {
   realLossesAgorot: 0,
   interestDividendAgorot: 45_600,
   taxWithheldAgorot: 308_625,
+  nonLinkedInterestAgorot: 200_000,
+  nonLinkedInterestWithheldAgorot: 30_000,
   uncertainFields: [],
 };
 
@@ -112,6 +114,8 @@ describe('formStateFromPayload derivations', () => {
         realLossesAgorot: '0',
         interestDividendAgorot: '456',
         taxWithheldAgorot: '3086.25',
+        nonLinkedInterestAgorot: '2000',
+        nonLinkedInterestWithheldAgorot: '300',
       },
     });
     expect(charityFormState(charityPayload)).toEqual({

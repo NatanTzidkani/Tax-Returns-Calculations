@@ -49,13 +49,15 @@ export function DataPanel({ taxYearId }: { taxYearId: string }) {
     queryFn: () => getConfirmedData(taxYearId),
   });
   const data = query.data;
+  const nonLinkedInterest = data?.nonLinkedInterest;
   const isEmpty =
     data !== undefined &&
     data.salaries.length === 0 &&
     data.donations.length === 0 &&
     data.excludedDonations === 0 &&
     data.capital.entries.length === 0 &&
-    data.capital.lossCarryforwardInAgorot === 0;
+    data.capital.lossCarryforwardInAgorot === 0 &&
+    nonLinkedInterest === undefined;
 
   return (
     <section aria-labelledby="data-panel-title" className={panelClasses}>
@@ -108,7 +110,8 @@ export function DataPanel({ taxYearId }: { taxYearId: string }) {
             </div>
           ) : null}
           {data!.capital.entries.length > 0 ||
-          data!.capital.lossCarryforwardInAgorot > 0 ? (
+          data!.capital.lossCarryforwardInAgorot > 0 ||
+          nonLinkedInterest !== undefined ? (
             <div>
               <h3 className={groupHeadingClasses}>{t('dataPanel.capitalTitle')}</h3>
               {data!.capital.entries.map((entry, index) => (
@@ -126,6 +129,19 @@ export function DataPanel({ taxYearId }: { taxYearId: string }) {
                   />
                 </div>
               ))}
+              {nonLinkedInterest !== undefined ? (
+                <div className="mt-2 border-t border-neutral-200 pt-1 dark:border-neutral-800">
+                  <p className={itemNameClasses}>{t('dataPanel.nonLinkedInterestTitle')}</p>
+                  <MoneyRow
+                    label={t('dataPanel.nonLinkedInterestAmount')}
+                    value={nonLinkedInterest.amountAgorot}
+                  />
+                  <MoneyRow
+                    label={t('dataPanel.nonLinkedInterestWithheld')}
+                    value={nonLinkedInterest.taxWithheldAgorot}
+                  />
+                </div>
+              ) : null}
               {data!.capital.lossCarryforwardInAgorot > 0 ? (
                 <div className="mt-2 border-t border-neutral-200 pt-1 dark:border-neutral-800">
                   <MoneyRow

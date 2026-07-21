@@ -50,38 +50,17 @@ describe('CalculateRequestSchema', () => {
     expect(() => CalculateRequestSchema.parse({})).toThrow();
   });
 
-  it('accepts optional non-linked-interest fields (integer agorot)', () => {
-    const parsed = CalculateRequestSchema.parse({
+  it('rejects the removed per-request non-linked-interest fields (now on Form 867)', () => {
+    // Non-linked 15% interest is confirmed data on Form 867 appendix ד', not a
+    // per-request input — the strict schema now REJECTS it as an unknown key.
+    const res = CalculateRequestSchema.safeParse({
       taxpayer: { gender: 'male' },
       nonLinkedInterestAgorot: 1_000_000,
-      nonLinkedInterestWithheldAgorot: 150_000,
     });
-    expect(parsed.nonLinkedInterestAgorot).toBe(1_000_000);
-    expect(parsed.nonLinkedInterestWithheldAgorot).toBe(150_000);
-  });
-
-  it('leaves non-linked-interest fields undefined when omitted', () => {
-    const parsed = CalculateRequestSchema.parse({ taxpayer: { gender: 'male' } });
-    expect(parsed.nonLinkedInterestAgorot).toBeUndefined();
-    expect(parsed.nonLinkedInterestWithheldAgorot).toBeUndefined();
-  });
-
-  it('rejects a negative non-linked-interest amount', () => {
-    expect(() =>
-      CalculateRequestSchema.parse({
-        taxpayer: { gender: 'male' },
-        nonLinkedInterestAgorot: -1,
-      }),
-    ).toThrow();
-  });
-
-  it('rejects a non-integer (fractional agorot) non-linked-interest amount', () => {
-    expect(() =>
-      CalculateRequestSchema.parse({
-        taxpayer: { gender: 'male' },
-        nonLinkedInterestAgorot: 100.5,
-      }),
-    ).toThrow();
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
+    }
   });
 
   // -------------------------------------------------------------------------

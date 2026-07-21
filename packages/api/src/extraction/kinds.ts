@@ -30,6 +30,8 @@ const form867Wire = z.object({
   realLossesAgorot: agorot,
   interestDividendAgorot: agorot,
   taxWithheldAgorot: agorot,
+  nonLinkedInterestAgorot: agorot,
+  nonLinkedInterestWithheldAgorot: agorot,
   uncertainFields: z.array(z.string()),
 });
 
@@ -82,7 +84,8 @@ ${COMMON_RULES}`,
   },
   form867: {
     wireSchema: form867Wire,
-    prompt: `זהו טופס 867 (אישור שנתי על ניכוי מס במקור מניירות ערך). חלץ את שנת המס, שם הבנק/ברוקר, מספר חשבון אם מודפס, ואת הסיכומים השנתיים: רווח הון ריאלי, הפסד הון ריאלי (כמספר חיובי), הכנסות ריבית ודיבידנד מניירות ערך, ומס שנוכה במקור.
+    prompt: `זהו טופס 867 (אישור שנתי על ניכוי מס במקור מניירות ערך). חלץ את שנת המס, שם הבנק/ברוקר, מספר חשבון אם מודפס, ואת הסיכומים השנתיים: רווח הון ריאלי, הפסד הון ריאלי (כמספר חיובי), הכנסות ריבית ודיבידנד מניירות ערך (נספח ג', 25%), ומס שנוכה במקור על ניירות הערך.
+בנוסף, אם מופיע נספח ד' ("אישור ניכוי מס במקור מריבית ורווחים אחרים מפקדונות ותוכניות חיסכון", 15%) — חלץ את הכנסת הריבית מפקדונות/תוכניות חיסכון (nonLinkedInterestAgorot) ואת המס שנוכה במקור עליה (nonLinkedInterestWithheldAgorot). זהו סעיף נפרד מריבית/דיבידנד מניירות ערך. אם אין נספח ד' — רשום 0 בשני השדות.
 ${COMMON_RULES}`,
     toPayload(wire) {
       return stripNulls(form867Wire.parse(wire));

@@ -146,6 +146,12 @@ export interface ConfirmedDataSummary {
   donations: TaxYearInput['donations'];
   excludedDonations: number;
   capital: TaxYearInput['capital'];
+  /**
+   * 15% non-linked deposit interest summed from the year's Form 867 appendix-ד'
+   * lines (Form 1301 field 078 / withholding 043); absent when no 867 carried
+   * it — same optionality as the engine's TaxYearInput bucket.
+   */
+  nonLinkedInterest?: TaxYearInput['nonLinkedInterest'];
 }
 
 export function getConfirmedData(taxYearId: string): Promise<ConfirmedDataSummary> {
