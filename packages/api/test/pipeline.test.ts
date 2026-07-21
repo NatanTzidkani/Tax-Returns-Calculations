@@ -127,6 +127,10 @@ let db: NodePgDatabase<typeof schema>;
 let storage: LocalDiskStorage;
 let storageDir: string;
 let app: FastifyInstance;
+// Shared cross-test state: `taxYearId` (created once in beforeAll) and the
+// module-level `fake.mode` are mutated and read across `it` blocks in source
+// order. This file must therefore NOT be run with `--shuffle`, `-t`/`.only`
+// or otherwise reordered/partially — later tests assume earlier ones ran.
 let taxYearId: string;
 let authedInject: (opts: InjectOptions) => Promise<LightMyRequestResponse>;
 
@@ -493,23 +497,28 @@ describe('extraction', () => {
   });
 
   it('marks the document failed (+reason) and responds 502 when extraction fails', async () => {
+    // `fake.mode` is module-level shared state; a mid-test throw must not leak
+    // 'refuse' into every later extraction test, so reset it in `finally`.
     fake.mode = 'refuse';
-    const doc = await uploadDocument(app, taxYearId, 'form106');
+    try {
+      const doc = await uploadDocument(app, taxYearId, 'form106');
 
-    const res = await authedInject({
-      method: 'POST',
-      url: `/documents/${doc.id}/extract`,
-    });
-    expect(res.statusCode).toBe(502);
-    expect(res.json().message).toMatch(/[֐-׿]/);
+      const res = await authedInject({
+        method: 'POST',
+        url: `/documents/${doc.id}/extract`,
+      });
+      expect(res.statusCode).toBe(502);
+      expect(res.json().message).toMatch(/[֐-׿]/);
 
-    const [row] = await db
-      .select()
-      .from(schema.documents)
-      .where(eq(schema.documents.id, doc.id));
-    expect(row!.extractionStatus).toBe('failed');
-    expect(row!.extractionError).toMatch(/[֐-׿]/);
-    fake.mode = 'ok';
+      const [row] = await db
+        .select()
+        .from(schema.documents)
+        .where(eq(schema.documents.id, doc.id));
+      expect(row!.extractionStatus).toBe('failed');
+      expect(row!.extractionError).toMatch(/[֐-׿]/);
+    } finally {
+      fake.mode = 'ok';
+    }
   });
 
   it("400s on extract for kind 'other'", async () => {

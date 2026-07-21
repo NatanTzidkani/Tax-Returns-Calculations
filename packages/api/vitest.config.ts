@@ -34,5 +34,19 @@ export default defineConfig({
         minForks: 1,
       },
     },
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      // server.ts is the process entrypoint (dotenv + listen); it's never
+      // imported by tests (buildApp is), so it only adds noise/uncovered lines.
+      exclude: ['src/server.ts'],
+      // A regression FLOOR, not a target. Measured branch coverage is 89.88%
+      // (2026-07-21); 87 sits just below it so a genuine drop trips CI without
+      // being so tight that trivial refactors flake red. Raise it, never lower,
+      // as coverage improves.
+      thresholds: {
+        branches: 87,
+      },
+    },
   },
 });
