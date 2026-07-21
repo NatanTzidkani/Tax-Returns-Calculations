@@ -387,6 +387,56 @@ describe('document upload', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toMatch(/[֐-׿]/);
   });
+
+  it('accepts a PNG image upload (201) — allowlisted image type', async () => {
+    const pngFile = {
+      filename: 'receipt.png',
+      contentType: 'image/png',
+      data: Buffer.from('\x89PNG\r\n\x1a\n fake png'),
+    };
+    const { payload, headers } = multipartBody({ kind: 'charity_receipt' }, pngFile);
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().originalFilename).toBe('receipt.png');
+  });
+
+  it('rejects a disallowed content type (400 Hebrew) — no blob written, no row inserted', async () => {
+    const before = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.taxYearId, taxYearId));
+
+    const shFile = {
+      filename: 'evil.sh',
+      contentType: 'application/x-sh',
+      data: Buffer.from('#!/bin/sh\nrm -rf /\n'),
+    };
+    const { payload, headers } = multipartBody({ kind: 'other' }, shFile);
+    const res = await authedInject({
+      method: 'POST',
+      url: `/tax-years/${taxYearId}/documents`,
+      payload,
+      headers,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/[֐-׿]/);
+
+    // No row was inserted for the rejected upload…
+    const after = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.taxYearId, taxYearId));
+    expect(after).toHaveLength(before.length);
+    // …and nothing landed in storage under this year for the evil basename.
+    for (const row of after) {
+      expect(row.storageKey.endsWith('-evil.sh')).toBe(false);
+    }
+  });
 });
 
 describe('GET /tax-years/:taxYearId/documents', () => {
