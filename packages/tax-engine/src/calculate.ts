@@ -56,11 +56,11 @@ export const ENGINE_VERSION = 'il-0.8.0';
 
 /** Every money field must arrive as a safe integer (agorot) — JSON gives us
  * plain numbers, so the boundary re-checks what the type system cannot. */
-function assertMoney(value: number, field: string, allowNegative = false): void {
-  if (!Number.isSafeInteger(value) || (!allowNegative && value < 0)) {
+function assertMoney(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new InvalidTaxInputError(
       field,
-      `must be a ${allowNegative ? '' : 'non-negative '}safe integer in agorot, got ${value}`,
+      `must be a non-negative safe integer in agorot, got ${value}`,
     );
   }
 }
