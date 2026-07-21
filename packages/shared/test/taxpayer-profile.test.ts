@@ -102,4 +102,19 @@ describe('TaxpayerProfileSchema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('rejects an unknown key inside a reused sub-object (parentContext is now strict)', () => {
+    // The profile top-level was already strict; making the SHARED
+    // ParentContextSchema/AliyahInputSchema/DegreeInputSchema strict makes the
+    // guarantee real all the way down — an unknown nested key is a loud reject,
+    // not silent stored drift.
+    const res = TaxpayerProfileSchema.safeParse({
+      gender: 'male',
+      parentContext: { regime: 'singleParent', bogus: true },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
 });

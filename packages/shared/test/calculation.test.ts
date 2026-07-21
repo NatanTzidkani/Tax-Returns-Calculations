@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 import { CalculateRequestSchema, TaxYearStatusUpdateSchema } from '../src/calculation';
 
 describe('CalculateRequestSchema', () => {
@@ -307,6 +308,109 @@ describe('CalculateRequestSchema', () => {
     expect(() =>
       CalculateRequestSchema.parse({ taxpayer: { gender: 'male', ...extra } }),
     ).toThrow();
+  });
+
+  // -------------------------------------------------------------------------
+  // Strict: unknown keys are REJECTED, never silently stripped. A dropped key
+  // (e.g. the removed children[].role, or a misspelled maintenanceShare)
+  // would produce a wrong credit-point allocation with no error — exactly the
+  // silent-default the engine's fail-loud contract forbids.
+  // -------------------------------------------------------------------------
+
+  it('rejects an unknown top-level key on the request (fail-loud, no silent drop)', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: { gender: 'male' },
+      surprise: 1,
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error).toBeInstanceOf(ZodError);
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
+
+  it('rejects an unknown key inside taxpayer', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: { gender: 'male', maritalStatus: 'single' },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
+
+  it('rejects the removed children[].role key (was silently dropped before strict)', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: {
+        gender: 'male',
+        parentContext: { regime: 'separatedEntitled' },
+        children: [{ ageInTaxYear: 8, role: 'custodial' }],
+      },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
+
+  it('rejects a misspelled maintenanceShare inside a child (would mis-allocate silently)', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: {
+        gender: 'male',
+        parentContext: { regime: 'separatedNonEntitled' },
+        children: [{ ageInTaxYear: 8, maintainanceShare: 0.5 }],
+      },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
+
+  it('rejects an unknown key inside parentContext', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: {
+        gender: 'male',
+        parentContext: { regime: 'singleFather', motherClaims: true },
+      },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
+
+  it('rejects an unknown key inside aliyah', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: {
+        gender: 'male',
+        aliyah: {
+          aliyahYear: 2024,
+          aliyahMonth: 7,
+          scheduleVariant: 'from2022',
+          country: 'US',
+        },
+      },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
+  });
+
+  it('rejects an unknown key inside a degree entry', () => {
+    const res = CalculateRequestSchema.safeParse({
+      taxpayer: {
+        gender: 'male',
+        degrees: [
+          { track: 'bachelor', completionYear: 2023, studyYears: 3, institution: 'HUJI' },
+        ],
+      },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+    }
   });
 });
 

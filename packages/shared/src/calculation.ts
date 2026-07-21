@@ -4,8 +4,9 @@ import { z } from 'zod';
 const agorotAmount = z.number().int('amounts are integer agorot').min(0);
 
 /** Integer calendar/tax year. Purely structural — legal year rules (e.g. the
- *  degree cohort boundaries) belong to the engine. */
-const yearInt = z.number().int('years are integer tax years');
+ *  degree cohort boundaries) belong to the engine. Bounds are absurdity guards
+ *  only (a mistyped 20240 or negative year is a loud reject, not a legal rule). */
+const yearInt = z.number().int('years are integer tax years').min(1900).max(2100);
 
 /**
  * Structured credit-point inputs (children+parentContext §40/§66(ג) / oleh
@@ -38,7 +39,7 @@ export const ChildInputSchema = z.object({
   /** טופס 116ד: claim the point deferred from the prior year (age 1).
    *  Same engine-owned eligibility. */
   claimDeferredBirthYearPoint: z.boolean().optional(),
-});
+}).strict();
 
 export type ChildInput = z.infer<typeof ChildInputSchema>;
 
@@ -65,7 +66,7 @@ export const ParentContextSchema = z.object({
   separateCalculation: z.boolean().optional(),
   /** §40(ב)(1א) guard input for singleFather. */
   motherClaimsUnderSection1: z.boolean().optional(),
-});
+}).strict();
 
 export type ParentContext = z.infer<typeof ParentContextSchema>;
 
@@ -74,7 +75,7 @@ export const AliyahInputSchema = z.object({
   /** Calendar month oleh status was granted, 1-12. */
   aliyahMonth: z.number().int().min(1).max(12),
   scheduleVariant: z.enum(['pre2022', 'from2022']),
-});
+}).strict();
 
 export type AliyahInput = z.infer<typeof AliyahInputSchema>;
 
@@ -86,8 +87,9 @@ export const DegreeInputSchema = z.object({
   electedClaimYear: yearInt.optional(),
   internship: z
     .object({ startYear: yearInt, endYear: yearInt })
+    .strict()
     .optional(),
-});
+}).strict();
 
 export type DegreeInput = z.infer<typeof DegreeInputSchema>;
 
@@ -110,21 +112,25 @@ export type DegreeInput = z.infer<typeof DegreeInputSchema>;
  * until a dedicated non-linked-interest extraction box exists. Both optional;
  * absent → no such income.
  */
-export const CalculateRequestSchema = z.object({
-  taxpayer: z.object({
-    gender: z.enum(['male', 'female']),
-    isIsraeliResident: z.boolean().default(true),
-    additionalCreditPoints: z.number().min(0).multipleOf(0.25).default(0),
-    parentContext: ParentContextSchema.optional(),
-    children: z.array(ChildInputSchema).optional(),
-    aliyah: AliyahInputSchema.optional(),
-    degrees: z.array(DegreeInputSchema).optional(),
-  }),
-  /** 15% deposit/savings interest income (Form 1301 field 078). */
-  nonLinkedInterestAgorot: agorotAmount.optional(),
-  /** Deposit-interest tax withheld at source (Form 1301 field 043). */
-  nonLinkedInterestWithheldAgorot: agorotAmount.optional(),
-});
+export const CalculateRequestSchema = z
+  .object({
+    taxpayer: z
+      .object({
+        gender: z.enum(['male', 'female']),
+        isIsraeliResident: z.boolean().default(true),
+        additionalCreditPoints: z.number().min(0).multipleOf(0.25).default(0),
+        parentContext: ParentContextSchema.optional(),
+        children: z.array(ChildInputSchema).optional(),
+        aliyah: AliyahInputSchema.optional(),
+        degrees: z.array(DegreeInputSchema).optional(),
+      })
+      .strict(),
+    /** 15% deposit/savings interest income (Form 1301 field 078). */
+    nonLinkedInterestAgorot: agorotAmount.optional(),
+    /** Deposit-interest tax withheld at source (Form 1301 field 043). */
+    nonLinkedInterestWithheldAgorot: agorotAmount.optional(),
+  })
+  .strict();
 
 export type CalculateRequest = z.infer<typeof CalculateRequestSchema>;
 
