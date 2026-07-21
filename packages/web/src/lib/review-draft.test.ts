@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   charityFormState,
   clearStoredDraft,
+  DRAFT_TTL_MS,
   draftStorageKey,
   fingerprintPayload,
   form106FormState,
@@ -159,6 +160,37 @@ describe('stored draft round-trip and validation', () => {
       draftStorageKey('doc-1'),
       JSON.stringify(makeDraft({ form: { taxYear: 2024 } as never })),
     );
+    expect(loadStoredDraft('doc-1')).toBeNull();
+    expect(localStorage.getItem(draftStorageKey('doc-1'))).toBeNull();
+  });
+});
+
+describe('stored draft expiry (TTL)', () => {
+  it('loads a draft saved just now', () => {
+    const draft = makeDraft({ savedAt: new Date().toISOString() });
+    saveStoredDraft('doc-1', draft);
+    expect(loadStoredDraft('doc-1')).toEqual(draft);
+  });
+
+  it('loads a draft saved just under the retention window', () => {
+    const draft = makeDraft({
+      savedAt: new Date(Date.now() - (DRAFT_TTL_MS - 60_000)).toISOString(),
+    });
+    saveStoredDraft('doc-1', draft);
+    expect(loadStoredDraft('doc-1')).toEqual(draft);
+  });
+
+  it('expires and removes a draft older than the retention window', () => {
+    const draft = makeDraft({
+      savedAt: new Date(Date.now() - (DRAFT_TTL_MS + 60_000)).toISOString(),
+    });
+    saveStoredDraft('doc-1', draft);
+    expect(loadStoredDraft('doc-1')).toBeNull();
+    expect(localStorage.getItem(draftStorageKey('doc-1'))).toBeNull();
+  });
+
+  it('treats an unparseable/NaN savedAt as expired and removes it', () => {
+    saveStoredDraft('doc-1', makeDraft({ savedAt: 'not-a-timestamp' }));
     expect(loadStoredDraft('doc-1')).toBeNull();
     expect(localStorage.getItem(draftStorageKey('doc-1'))).toBeNull();
   });
