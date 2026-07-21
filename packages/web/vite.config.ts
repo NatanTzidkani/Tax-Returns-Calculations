@@ -40,6 +40,32 @@ export default defineConfig(({ mode }) => {
       fileParallelism: false,
       testTimeout: 30_000,
       hookTimeout: 30_000,
+      coverage: {
+        provider: 'v8',
+        include: ['src/**'],
+        exclude: [
+          // Test files and shared test harness — not product code.
+          'src/**/*.test.{ts,tsx}',
+          'src/test/**',
+          // App entry point (bootstraps React into the DOM; no logic to test).
+          'src/main.tsx',
+          // Ambient type declarations — no runtime code.
+          'src/**/*.d.ts',
+          // Styles.
+          'src/**/*.css',
+        ],
+        thresholds: {
+          // Regression floor set just below the coverage measured when this
+          // tooling landed (stmts 96.67 / branch 91.96 / funcs 87.67 /
+          // lines 96.67, chore/web-coverage-tooling). This is a ratchet to
+          // stop backsliding, NOT a bar that demands new tests today — raise
+          // it as coverage improves.
+          statements: 96,
+          branches: 90,
+          functions: 85,
+          lines: 96,
+        },
+      },
     },
   };
 });
