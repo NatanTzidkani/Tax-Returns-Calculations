@@ -114,7 +114,7 @@ describe('TaxpayerProfileSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 });

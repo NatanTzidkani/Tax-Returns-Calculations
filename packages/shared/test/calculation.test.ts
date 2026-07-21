@@ -325,7 +325,7 @@ describe('CalculateRequestSchema', () => {
     expect(res.success).toBe(false);
     if (!res.success) {
       expect(res.error).toBeInstanceOf(ZodError);
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 
@@ -335,7 +335,7 @@ describe('CalculateRequestSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 
@@ -349,7 +349,7 @@ describe('CalculateRequestSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 
@@ -363,7 +363,7 @@ describe('CalculateRequestSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 
@@ -376,7 +376,7 @@ describe('CalculateRequestSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 
@@ -394,7 +394,7 @@ describe('CalculateRequestSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 
@@ -409,7 +409,7 @@ describe('CalculateRequestSchema', () => {
     });
     expect(res.success).toBe(false);
     if (!res.success) {
-      expect(res.error.issues[0].code).toBe('unrecognized_keys');
+      expect(res.error.issues[0]?.code).toBe('unrecognized_keys');
     }
   });
 });
