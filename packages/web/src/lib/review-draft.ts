@@ -172,6 +172,14 @@ export function formStatesEqual(a: ReviewFormState, b: ReviewFormState): boolean
 export const DRAFT_DEBOUNCE_MS = 300;
 
 /**
+ * Retention window for an abandoned autosave draft (30 days). A draft is
+ * edited-but-never-confirmed local state carrying PII (national ID, salary);
+ * past this window the read-back path treats it as expired, deletes it, and
+ * restores nothing — so stale PII cannot linger indefinitely in localStorage.
+ */
+export const DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
  * The `v1` is the draft-record schema version: an unknown/old record shape
  * is treated as no draft and removed, never guessed at.
  */
@@ -263,10 +271,21 @@ function isStoredReviewDraft(value: unknown): value is StoredReviewDraft {
 }
 
 /**
+ * A draft is expired once its `savedAt` is older than `DRAFT_TTL_MS`. An
+ * unparseable savedAt (NaN) is treated as expired too — an unreadable
+ * timestamp is not trusted to keep PII around.
+ */
+function isExpiredDraft(draft: StoredReviewDraft): boolean {
+  const savedAtMs = Date.parse(draft.savedAt);
+  if (Number.isNaN(savedAtMs)) return true;
+  return Date.now() - savedAtMs > DRAFT_TTL_MS;
+}
+
+/**
  * Load the stored draft for a document. Anything unreadable (corrupt JSON,
- * unknown version, form shape not matching its kind) is treated as no draft
- * and removed — never guessed at. Reading is idempotent, so this is safe
- * under StrictMode double-invocation.
+ * unknown version, form shape not matching its kind) or expired past
+ * `DRAFT_TTL_MS` is treated as no draft and removed — never guessed at.
+ * Reading is idempotent, so this is safe under StrictMode double-invocation.
  */
 export function loadStoredDraft(documentId: string): StoredReviewDraft | null {
   const key = draftStorageKey(documentId);
@@ -279,10 +298,12 @@ export function loadStoredDraft(documentId: string): StoredReviewDraft | null {
   if (raw === null) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (isStoredReviewDraft(parsed)) return parsed;
+    if (isStoredReviewDraft(parsed) && !isExpiredDraft(parsed)) return parsed;
   } catch {
     // Corrupt JSON — fall through to removal.
   }
+  // Corrupt, wrong-shape, or expired (incl. unparseable savedAt): remove and
+  // surface nothing — same disposition, never guessed at.
   clearStoredDraft(documentId);
   return null;
 }
